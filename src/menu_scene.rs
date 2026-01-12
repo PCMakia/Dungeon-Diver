@@ -6,6 +6,7 @@ use raylib::prelude::*;
 
 use crate::game_data::GameData;
 use crate::game_scene::GameScene;
+use crate::maze_scene::MazeScene;
 use crate::scenes::{Scene,SceneSwitch}; 
 use crate::utils::*;
 
@@ -19,10 +20,19 @@ impl Scene for MenuScene {
 
         if _rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
             let click = _rl.get_mouse_position();
-            let rectangle = Rectangle::new(200.0, 200.0, 300.0, 150.0);
-            if  check_collision_point_rect(&click, &rectangle) {
-                println!("click");
+            
+            // Original game button
+            let original_game_rect = Rectangle::new(200.0, 150.0, 300.0, 100.0);
+            if check_collision_point_rect(&click, &original_game_rect) {
+                println!("Starting original game");
                 return SceneSwitch::Push(Box::new(GameScene::new(5, data.screen_width, data.screen_height)));
+            }
+            
+            // Maze game button
+            let maze_game_rect = Rectangle::new(200.0, 300.0, 300.0, 100.0);
+            if check_collision_point_rect(&click, &maze_game_rect) {
+                println!("Starting maze game");
+                return SceneSwitch::Push(Box::new(MazeScene::new(data.screen_width, data.screen_height)));
             }
         }
         
@@ -37,8 +47,13 @@ impl Scene for MenuScene {
     fn draw(&self, d: &mut RaylibDrawHandle, _data: &mut GameData) {
         d.clear_background(Color::WHITE);
         
-        d.draw_rectangle(200, 200, 300, 150, Color::RED);
-        d.draw_text("Click here", 210, 205, 20, Color::BLACK);
+        // Original game button
+        d.draw_rectangle(200, 150, 300, 100, Color::RED);
+        d.draw_text("Original Game", 250, 180, 20, Color::BLACK);
+        
+        // Maze game button
+        d.draw_rectangle(200, 300, 300, 100, Color::GREEN);
+        d.draw_text("Maze Game", 270, 330, 20, Color::BLACK);
     }
 
     fn on_exit(&mut self, _rl: &mut RaylibHandle, _data: &mut GameData) {}

@@ -6,7 +6,6 @@ use raylib::prelude::*;
 
 use crate::game_data::GameData;
 use crate::game_scene::GameScene;
-use crate::maze_scene::MazeScene;
 use crate::scenes::{Scene,SceneSwitch}; 
 use crate::utils::*;
 
@@ -20,19 +19,10 @@ impl Scene for MenuScene {
 
         if _rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
             let click = _rl.get_mouse_position();
-            
-            // Original game button
-            let original_game_rect = Rectangle::new(200.0, 150.0, 300.0, 100.0);
-            if check_collision_point_rect(&click, &original_game_rect) {
-                println!("Starting original game");
+            let rectangle = Rectangle::new(200.0, 200.0, 300.0, 150.0);
+            if  check_collision_point_rect(&click, &rectangle) {
+                println!("click");
                 return SceneSwitch::Push(Box::new(GameScene::new(5, data.screen_width, data.screen_height)));
-            }
-            
-            // Maze game button
-            let maze_game_rect = Rectangle::new(200.0, 300.0, 300.0, 100.0);
-            if check_collision_point_rect(&click, &maze_game_rect) {
-                println!("Starting maze game");
-                return SceneSwitch::Push(Box::new(MazeScene::new(data.screen_width, data.screen_height)));
             }
         }
         
@@ -47,13 +37,8 @@ impl Scene for MenuScene {
     fn draw(&self, d: &mut RaylibDrawHandle, _data: &mut GameData) {
         d.clear_background(Color::WHITE);
         
-        // Original game button
-        d.draw_rectangle(200, 150, 300, 100, Color::RED);
-        d.draw_text("Original Game", 250, 180, 20, Color::BLACK);
-        
-        // Maze game button
-        d.draw_rectangle(200, 300, 300, 100, Color::GREEN);
-        d.draw_text("Maze Game", 270, 330, 20, Color::BLACK);
+        d.draw_rectangle(200, 200, 300, 150, Color::RED);
+        d.draw_text("Click here", 210, 205, 20, Color::BLACK);
     }
 
     fn on_exit(&mut self, _rl: &mut RaylibHandle, _data: &mut GameData) {}
@@ -68,13 +53,15 @@ impl Scene for WinScene {
 
     fn handle_input(&mut self, _rl: &mut RaylibHandle, _data: &mut GameData) -> SceneSwitch {
 
+        
         if _rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
             let click = _rl.get_mouse_position();
             let rectangle = Rectangle::new(200.0, 200.0, 300.0, 150.0);
             if  check_collision_point_rect(&click, &rectangle) {
                 println!("click");
                 // close the program
-                return SceneSwitch::Quit;
+                return SceneSwitch::Pop;
+                //return SceneSwitch::Quit;
             }
         }
         
@@ -89,12 +76,54 @@ impl Scene for WinScene {
     fn draw(&self, d: &mut RaylibDrawHandle, _data: &mut GameData) {
         d.clear_background(Color::WHITE);
         
-        d.draw_rectangle(200, 200, 300, 150, Color::BLUE);
-        d.draw_text("You Win!", 210, 205, 20, Color::BLACK);
+        d.draw_rectangle(200, 200, 300, 150, Color::GREEN);
+        d.draw_text("Win", 210, 205, 20, Color::BLACK);
         let message = format!("Final score: {}", _data.points);
         d.draw_text(message.as_str(), 210, 225, 20, Color::BLACK);
-        d.draw_text("Click here to exit.", 210, 250, 20, Color::BLACK);
+        d.draw_text("Click to quit.", 210, 250, 20, Color::BEIGE);
     }
 
     fn on_exit(&mut self, _rl: &mut RaylibHandle, _data: &mut GameData) {}
-}
+}      
+
+
+pub struct PauseScene;
+
+impl Scene for PauseScene {
+    fn on_enter(&mut self, _rl: &mut RaylibHandle, _data: &mut GameData) {}
+
+    fn handle_input(&mut self, _rl: &mut RaylibHandle, _data: &mut GameData) -> SceneSwitch {
+
+        if _rl.is_key_pressed(KeyboardKey::KEY_P) {
+            return SceneSwitch::Pop;
+        }
+        // if _rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
+        //     let click = _rl.get_mouse_position();
+        //     let rectangle = Rectangle::new(200.0, 200.0, 300.0, 150.0);
+        //     if  check_collision_point_rect(&click, &rectangle) {
+        //         println!("click");
+        //         // close the program
+        //         return SceneSwitch::Quit;
+        //     }
+        // }
+        
+        SceneSwitch::None
+    }
+
+    fn update(&mut self, _dt: f32, _data: &mut GameData) -> SceneSwitch {
+        SceneSwitch::None
+
+    }
+
+    fn draw(&self, d: &mut RaylibDrawHandle, _data: &mut GameData) {
+        d.clear_background(Color::WHITE);
+        
+        d.draw_rectangle(200, 200, 300, 150, Color::GRAY);
+        d.draw_text("Paused", 210, 205, 20, Color::WHITE);
+        let message = format!("Current score: {}", _data.points);
+        d.draw_text(message.as_str(), 210, 225, 20, Color::WHEAT);
+        d.draw_text("Press P to resume.", 210, 250, 20, Color::WHITE);
+    }
+
+    fn on_exit(&mut self, _rl: &mut RaylibHandle, _data: &mut GameData) {}
+}      

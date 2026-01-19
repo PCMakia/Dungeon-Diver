@@ -370,12 +370,12 @@ impl Scene for MazeScene {
 
         // Load texture using the thread from GameData
         if let Some(ref thread) = data.thread {
-            let texture_path = resolve_asset_path("assets/tileset0.png");
+            let texture_path = resolve_asset_path("assets/textures/tileset0.png");
             self.tileset = Some(
                 rl.load_texture(thread, &texture_path)
                     .unwrap_or_else(|e| {
                         let current_dir = env::current_dir().unwrap_or_default();
-                        panic!("Failed to load tileset at '{}' (resolved from 'assets/tileset0.png'): {:?}. Current working directory: {:?}", 
+                        panic!("Failed to load tileset at '{}' (resolved from 'assets/textures/tileset0.png'): {:?}. Current working directory: {:?}", 
                                texture_path, e, current_dir);
                     })
             );

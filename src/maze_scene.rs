@@ -4,6 +4,7 @@ use crate::menu_scene::WinScene;
 use crate::scenes::{Scene, SceneSwitch};
 use crate::game_data::GameData;
 use crate::{is_floor_tile, is_wall_tile};
+use crate::npc::{Health, EntityState, ContactDamage, EntityStats};
 use std::fs::File;
 use std::io::Read;
 use std::env;
@@ -165,6 +166,13 @@ pub struct MazeScene {
     tank_anim: AnimationState,
     shooter_anim: AnimationState,
     shooter_death_anim: AnimationState,
+    
+    // HP and combat system
+    player_hp: Health,
+    entity_states: Vec<EntityState>,
+    contact_damage: ContactDamage,
+    entity_stats: EntityStats,
+    player_stun_ticks: i32, // Number of ticks player is stunned (0 = not stunned)
 }
 
 
@@ -204,6 +212,13 @@ impl MazeScene {
             shooter_anim: AnimationState::with_sequence(vec![0, 1, 2, 3, 3, 2, 1, 0], 0.2),
             // Shooter: 7 frames death animation
             shooter_death_anim: AnimationState::new(7, 0.15),
+            
+            // Initialize HP system
+            player_hp: Health::new(10), 
+            entity_states: Vec::new(),
+            contact_damage: ContactDamage::default(),
+            entity_stats: EntityStats::default(),
+            player_stun_ticks: 0,
         }
     }
 
@@ -264,7 +279,51 @@ impl MazeScene {
     
     /// Process player movement on game tick
     fn update_player(&mut self) {
+        // Decrease stun counter
+        if self.player_stun_ticks > 0 {
+            self.player_stun_ticks -= 1;
+            // Clear queued move if player is stunned
+            self.queued_move = None;
+            return;
+        }
+        
         if let Some((new_x, new_y)) = self.queued_move.take() {
+            // Check if target tile is blocked by a monster
+            // Find monster index first to avoid borrowing issues
+            let monster_index = self.entity_states.iter()
+                .position(|e| e.x == new_x && e.y == new_y && e.hp.is_alive() && (e.kind == "tank" || e.kind == "shooter"));
+            
+            if let Some(idx) = monster_index {
+                let monster_kind = self.entity_states[idx].kind.clone();
+                
+                // Deal contact damage
+                let damage = match monster_kind.as_str() {
+                    "tank" => self.contact_damage.tank_damage,
+                    "shooter" => self.contact_damage.shooter_damage,
+                    _ => 0,
+                };
+                
+                if damage > 0 {
+                    let player_died = self.player_hp.take_damage(damage);
+                    
+                    // Reset monster's cooldown
+                    self.entity_states[idx].reset_damage_cooldown(self.contact_damage.cooldown_time);
+                    
+                    // Stun player for 2 ticks
+                    self.player_stun_ticks = 2;
+                    
+                    // Check for player death
+                    if player_died {
+                        // TODO: Handle player death (game over screen)
+                        println!("Player died! HP: {}/{}", self.player_hp.current, self.player_hp.max);
+                    }
+                }
+                
+                // Block movement - don't move to that tile
+                return;
+            }
+            
+            // No monster blocking, proceed with normal movement check
             if self.is_valid_move(new_x, new_y) {
                 // Update player direction based on movement
                 if new_x > self.player_x {
@@ -433,6 +492,25 @@ impl Scene for MazeScene {
         // Filter out player entities from map (player is now separate)
         self.map.entities.retain(|e| e.kind != "player");
         
+        // Initialize player HP
+        self.player_hp = Health::new(self.entity_stats.player_max_hp);
+        self.player_stun_ticks = 0;
+        
+        // Convert map entities to entity states with HP
+        self.entity_states.clear();
+        for e in &self.map.entities {
+            // Only create entity states for enemies (tank, shooter)
+            if e.kind == "tank" || e.kind == "shooter" {
+                let max_hp = self.entity_stats.get_max_hp(&e.kind);
+                self.entity_states.push(EntityState::new(
+                    e.kind.clone(),
+                    e.x,
+                    e.y,
+                    max_hp
+                ));
+            }
+        }
+        
         // Initialize camera position
         self.update_camera(data);
         
@@ -443,6 +521,16 @@ impl Scene for MazeScene {
 
 
     fn handle_input(&mut self, rl: &mut RaylibHandle, _data: &mut GameData) -> SceneSwitch {
+        if rl.is_key_pressed(KeyboardKey::KEY_ESCAPE) || rl.is_key_pressed(KeyboardKey::KEY_P) {
+            use crate::menu_scene::PauseScene;
+            return SceneSwitch::Push(Box::new(PauseScene));
+        }
+        
+        // Don't queue movement if player is stunned
+        if self.player_stun_ticks > 0 {
+            return SceneSwitch::None;
+        }
+        
         // Queue movement for tick-based updates (only queue if no move is already queued)
         if self.queued_move.is_none() {
             let mut new_x = self.player_x;
@@ -569,6 +657,11 @@ impl Scene for MazeScene {
         self.shooter_anim.update(dt);
         // Note: shooter_death_anim only plays when shooter dies
         
+        // Update entity cooldowns every frame
+        for entity in &mut self.entity_states {
+            entity.update_cooldown(dt);
+        }
+        
         // Tick-based game logic
         self.tick_timer += dt;
         
@@ -581,6 +674,15 @@ impl Scene for MazeScene {
             
             // Update enemy AI
             self.update_enemies();
+            
+            // Remove dead entities
+            self.entity_states.retain(|e| e.hp.is_alive() || e.kind == "goal");
+        }
+        
+        // Check if player has died (HP <= 0)
+        if !self.player_hp.is_alive() {
+            use crate::menu_scene::LoseScene;
+            return SceneSwitch::Push(Box::new(LoseScene::new(self.map_path.clone())));
         }
         
         // Check if player has reached the goal 
@@ -642,17 +744,26 @@ impl Scene for MazeScene {
         }
         
         // ===== ENTITIES LAYER =====
-        // Draw entities only if they're in FOV
+        // Draw goals from map.entities
         for e in &self.map.entities {
+            if e.kind == "goal" && self.in_fov(e.x, e.y) {
+                self.draw_tile(&mut d2d, 81, e.x, e.y);
+            }
+        }
+        
+        // Draw enemies from entity_states (only alive ones)
+        for e in &self.entity_states {
             // FOV culling: skip entities outside circular FOV
             if !self.in_fov(e.x, e.y) {
                 continue;
             }
             
+            // Only draw alive entities
+            if !e.hp.is_alive() {
+                continue;
+            }
+            
             match e.kind.as_str() {
-                "goal" => {
-                    self.draw_tile(&mut d2d, 81, e.x, e.y);
-                }
                 "tank" => {
                     if let Some(ref sprite) = self.tank_sprite {
                         // Tank: Top row (3 frames) = East movement
@@ -738,6 +849,15 @@ impl Scene for MazeScene {
         drop(d2d);
         
         // ===== UI LAYER (screen space, not affected by camera) =====
+        // Draw player HP
+        let hp_text = format!("HP: {}/{}", self.player_hp.current, self.player_hp.max);
+        d.draw_text(hp_text.as_str(), 10, 10, 20, Color::WHITE);
+        
+        // Draw stun indicator if player is stunned
+        if self.player_stun_ticks > 0 {
+            d.draw_text("STUNNED!", 10, 35, 20, Color::RED);
+        }
+        
         d.draw_text(
             &format!("Score: {}", data.points),
             10,

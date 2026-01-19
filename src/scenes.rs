@@ -12,6 +12,7 @@ pub enum SceneSwitch {
     Push(Box<dyn Scene>),
     Replace(Box<dyn Scene>),
     Pop,
+    PopAndReplace(Box<dyn Scene>), // Pop current scene and replace the one below it
     Quit,
 }
 
@@ -23,25 +24,27 @@ pub enum SceneSwitch {
 /// The leading underscore tells the compiler not to complain (warn) if that variable is not read. 
 pub trait Scene {
     
-    /// called when the scene is first started.
+    
     fn on_enter(&mut self, _rl: &mut RaylibHandle, _data: &mut GameData) {}
 
-    /// collects the player's intent from the controller / keyboard / input hardware.
+    
     fn handle_input(&mut self, _rl: &mut RaylibHandle, _data: &mut GameData) -> SceneSwitch {
         SceneSwitch::None
     }
 
-    /// update / evolve the scene according to a time step dt.
+    
     fn update(&mut self, _dt: f32, _data: &mut GameData) -> SceneSwitch {
         SceneSwitch::None
     }
 
-    /// draw the scene elements. This should be very simple code that only draws using the RaylibDrawHandle
+    
     fn draw(&self, d: &mut RaylibDrawHandle, data: &mut GameData);
 
-    /// called when the scene is finished. Do any clean up that is needed when the game ends (free textures or other data).
-    /// Rust may take care of most of the memory clean up, but releasing GPU memory might go here.
     fn on_exit(&mut self, _rl: &mut RaylibHandle, _data: &mut GameData) {}
+
+    fn is_overlay(&self) -> bool {
+        false
+    }
 }
 
 
@@ -64,7 +67,7 @@ impl SceneManager {
         mgr
     }
 
-    /// handles collecting user input by calling the scene's [`Scene::handle_input`] and does time step updating with [update]
+
     pub fn update(&mut self, rl: &mut RaylibHandle, dt: f32, data: &mut GameData) {
         if let Some(scene) = self.scenes.last_mut() {
             let switch = scene.handle_input(rl, data);
@@ -78,9 +81,29 @@ impl SceneManager {
     }
 
     // calls the current scene's [draw] method
+    // For overlay scenes (pause/lose), draw the last non-overlay scene (the game) and the overlay
+    // For normal scenes, only draw the top scene (which clears background)
     pub fn draw(&self, d: &mut RaylibDrawHandle, data: &mut GameData) {
-        if let Some(scene) = self.scenes.last() {
-            scene.draw(d, data);
+        // Check if the top scene is an overlay scene
+        if let Some(top_scene) = self.scenes.last() {
+            if top_scene.is_overlay() {
+                // Overlay scene: find and draw the last non-overlay scene (the game), then the overlay
+                // This prevents drawing menu scenes that might still be in the stack
+                let mut found_game_scene = false;
+                for scene in self.scenes.iter().rev() {
+                    if !scene.is_overlay() {
+                        // Found the last non-overlay scene (the game)
+                        scene.draw(d, data);
+                        found_game_scene = true;
+                        break;
+                    }
+                }
+                // Draw the overlay scene on top
+                top_scene.draw(d, data);
+            } else {
+                // Normal scene: only draw the top scene (it clears background)
+                top_scene.draw(d, data);
+            }
         }
     }
 
@@ -103,6 +126,18 @@ impl SceneManager {
                 if let Some(mut old_scene) = self.scenes.pop() {
                     old_scene.on_exit(rl, data);
                 }
+            },
+            SceneSwitch::PopAndReplace(mut scene) => {
+                
+                if let Some(mut old_scene) = self.scenes.pop() {
+                    old_scene.on_exit(rl, data);
+                }
+                
+                if let Some(mut old_scene) = self.scenes.pop() {
+                    old_scene.on_exit(rl, data);
+                }
+                scene.on_enter(rl, data);
+                self.scenes.push(scene);
             },
             SceneSwitch::Quit => {
                 self.quit = true;

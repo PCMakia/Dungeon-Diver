@@ -10,6 +10,69 @@ use std::env;
 use std::path::Path;
 use serde::Deserialize;
 
+/// Animation state for sprite-based entities
+struct AnimationState {
+    current_frame: usize,
+    frame_timer: f32,
+    frame_duration: f32,  // seconds per frame
+    total_frames: usize,
+    is_playing: bool,     // false for death animations that play once
+    frame_sequence: Option<Vec<usize>>, // Custom frame sequence (e.g., [0,1,2,3,2,1,0] for ping-pong)
+}
+
+impl AnimationState {
+    /// Create animation with simple sequential frames
+    fn new(total_frames: usize, frame_duration: f32) -> Self {
+        Self {
+            current_frame: 0,
+            frame_timer: 0.0,
+            frame_duration,
+            total_frames,
+            is_playing: true,
+            frame_sequence: None,
+        }
+    }
+    
+    /// Create animation with custom frame sequence
+    fn with_sequence(frame_sequence: Vec<usize>, frame_duration: f32) -> Self {
+        let total_frames = frame_sequence.len();
+        Self {
+            current_frame: 0,
+            frame_timer: 0.0,
+            frame_duration,
+            total_frames,
+            is_playing: true,
+            frame_sequence: Some(frame_sequence),
+        }
+    }
+    
+    fn update(&mut self, dt: f32) {
+        if !self.is_playing {
+            return;
+        }
+        self.frame_timer += dt;
+        if self.frame_timer >= self.frame_duration {
+            self.frame_timer = 0.0;
+            self.current_frame = (self.current_frame + 1) % self.total_frames;
+        }
+    }
+    
+    /// Get the actual frame index to use
+    fn get_frame_index(&self) -> usize {
+        if let Some(ref sequence) = self.frame_sequence {
+            sequence[self.current_frame]
+        } else {
+            self.current_frame
+        }
+    }
+    
+    fn reset(&mut self) {
+        self.current_frame = 0;
+        self.frame_timer = 0.0;
+        self.is_playing = true;
+    }
+}
+
 /// Resolve asset path by trying multiple relative path options
 fn resolve_asset_path(path: &str) -> String {
     let paths_to_try = vec![
@@ -76,6 +139,7 @@ pub struct MazeScene {
 
     player_x: usize,
     player_y: usize,
+    player_direction: usize, // 0=North, 1=East, 2=South, 3=West
     
     // Camera system
     camera: Camera2D,
@@ -89,7 +153,18 @@ pub struct MazeScene {
     queued_move: Option<(usize, usize)>,
     
     // Gamepad input tracking
-    last_gamepad_direction: Option<(i32, i32)>, 
+    last_gamepad_direction: Option<(i32, i32)>,
+    
+    // Sprite sheets for animated entities
+    player_sprite: Option<Texture2D>,
+    tank_sprite: Option<Texture2D>,
+    shooter_sprite: Option<Texture2D>,
+    
+    // Animation states
+    player_anim: AnimationState,
+    tank_anim: AnimationState,
+    shooter_anim: AnimationState,
+    shooter_death_anim: AnimationState,
 }
 
 
@@ -105,7 +180,8 @@ impl MazeScene {
             tile_size: 32,
             player_x: 0,
             player_y: 0,
-            // Initialize camera centered on origin (will be updated in on_enter)
+            player_direction: 2, // Start facing South
+            // Initialize camera centered on origin 
             camera: Camera2D {
                 target: Vector2::zero(),
                 offset: Vector2::zero(),
@@ -114,9 +190,20 @@ impl MazeScene {
             },
             fov_radius: 7, 
             tick_timer: 0.0,
-            tick_rate: 0.15, // ~6.6 ticks per second (150ms per tick)
+            tick_rate: 0.28, // increase for slower tick game
             queued_move: None,
             last_gamepad_direction: None,
+            player_sprite: None,
+            tank_sprite: None,
+            shooter_sprite: None,
+            // Player: 3 frames per row, 4 rows (directions)
+            player_anim: AnimationState::with_sequence(vec![0, 1, 2, 2, 1, 0], 0.15),
+            // Tank: 3 frames per row, varies by direction
+            tank_anim: AnimationState::with_sequence(vec![0, 1, 2, 2, 1, 0], 0.15),
+            // Shooter: 4 frames idle:
+            shooter_anim: AnimationState::with_sequence(vec![0, 1, 2, 3, 3, 2, 1, 0], 0.2),
+            // Shooter: 7 frames death animation
+            shooter_death_anim: AnimationState::new(7, 0.15),
         }
     }
 
@@ -179,10 +266,56 @@ impl MazeScene {
     fn update_player(&mut self) {
         if let Some((new_x, new_y)) = self.queued_move.take() {
             if self.is_valid_move(new_x, new_y) {
+                // Update player direction based on movement
+                if new_x > self.player_x {
+                    self.player_direction = 1; // East
+                } else if new_x < self.player_x {
+                    self.player_direction = 3; // West
+                } else if new_y > self.player_y {
+                    self.player_direction = 2; // South
+                } else if new_y < self.player_y {
+                    self.player_direction = 0; // North
+                }
+                
                 self.player_x = new_x;
                 self.player_y = new_y;
             }
         }
+    }
+    
+    /// Draw animated sprite from sprite sheet
+    fn draw_animated_sprite(
+        &self,
+        d: &mut RaylibDrawHandle,
+        sprite: &Texture2D,
+        frame_x: usize,
+        frame_y: usize,
+        frame_width: i32,
+        frame_height: i32,
+        x: usize,
+        y: usize,
+        sprite_width: i32,
+        sprite_height: i32,
+    ) {
+        let src = Rectangle {
+            x: (frame_x * frame_width as usize) as f32,
+            y: (frame_y * frame_height as usize) as f32,
+            width: frame_width as f32,
+            height: frame_height as f32,
+        };
+        
+        // Center sprite on tile
+        let tile_center_x = (x as i32 * self.tile_size + self.tile_size / 2) as f32;
+        let tile_center_y = (y as i32 * self.tile_size + self.tile_size / 2) as f32;
+        
+        let dst = Rectangle {
+            x: tile_center_x - sprite_width as f32 / 2.0,
+            y: tile_center_y - sprite_height as f32 / 2.0,
+            width: sprite_width as f32,
+            height: sprite_height as f32,
+        };
+        
+        d.draw_texture_pro(sprite, src, dst, Vector2::zero(), 0.0, Color::WHITE);
     }
     
     /// Update enemy AI on game tick (placeholder for future implementation)
@@ -244,6 +377,31 @@ impl Scene for MazeScene {
                         let current_dir = env::current_dir().unwrap_or_default();
                         panic!("Failed to load tileset at '{}' (resolved from 'assets/tileset0.png'): {:?}. Current working directory: {:?}", 
                                texture_path, e, current_dir);
+                    })
+            );
+            
+            // Load entity sprite sheets
+            let player_path = resolve_asset_path("assets/models/P-Ranger.png");
+            self.player_sprite = Some(
+                rl.load_texture(thread, &player_path)
+                    .unwrap_or_else(|e| {
+                        panic!("Failed to load player sprite: {:?}", e);
+                    })
+            );
+            
+            let tank_path = resolve_asset_path("assets/models/Tank-45x66.png");
+            self.tank_sprite = Some(
+                rl.load_texture(thread, &tank_path)
+                    .unwrap_or_else(|e| {
+                        panic!("Failed to load tank sprite: {:?}", e);
+                    })
+            );
+            
+            let shooter_path = resolve_asset_path("assets/models/Shooter-45x51.png");
+            self.shooter_sprite = Some(
+                rl.load_texture(thread, &shooter_path)
+                    .unwrap_or_else(|e| {
+                        panic!("Failed to load shooter sprite: {:?}", e);
                     })
             );
         }
@@ -405,6 +563,12 @@ impl Scene for MazeScene {
         // Update camera every frame
         self.update_camera(data);
         
+        // Update animations every frame
+        self.player_anim.update(dt);
+        self.tank_anim.update(dt);
+        self.shooter_anim.update(dt);
+        // Note: shooter_death_anim only plays when shooter dies
+        
         // Tick-based game logic
         self.tick_timer += dt;
         
@@ -485,37 +649,53 @@ impl Scene for MazeScene {
                 continue;
             }
             
-            // Convert tile coordinates to world pixel coordinates
-            let px = (e.x as i32 * self.tile_size) as f32;
-            let py = (e.y as i32 * self.tile_size) as f32;
-            
             match e.kind.as_str() {
                 "goal" => {
-                    d2d.draw_rectangle(
-                        px as i32,
-                        py as i32,
-                        self.tile_size,
-                        self.tile_size,
-                        Color::GOLD,
-                    );
+                    self.draw_tile(&mut d2d, 81, e.x, e.y);
                 }
                 "tank" => {
-                    // Placeholder for tank rendering
-                    d2d.draw_circle(
-                        (px + self.tile_size as f32 / 2.0) as i32,
-                        (py + self.tile_size as f32 / 2.0) as i32,
-                        self.tile_size as f32 * 0.3,
-                        Color::RED,
-                    );
+                    if let Some(ref sprite) = self.tank_sprite {
+                        // Tank: Top row (3 frames) = East movement
+                        //       Row 1 frame 0 = facing West (left)
+                        //       Row 1 frames 1-2 = South movement
+                        // For now, use East animation (top row, 3 frames)
+                        // TODO: Add direction tracking for tank to use correct row/frame
+                        let frame_x = self.tank_anim.get_frame_index().min(2); // Clamp to 3 frames
+                        let frame_y = 0; // Top row for East
+                        self.draw_animated_sprite(
+                            &mut d2d,
+                            sprite,
+                            frame_x,
+                            frame_y,
+                            45, // frame width
+                            66, // frame height
+                            e.x,
+                            e.y,
+                            45, // sprite width
+                            66, // sprite height
+                        );
+                    }
                 }
                 "shooter" => {
-                    // Placeholder for shooter rendering
-                    d2d.draw_circle(
-                        (px + self.tile_size as f32 / 2.0) as i32,
-                        (py + self.tile_size as f32 / 2.0) as i32,
-                        self.tile_size as f32 * 0.25,
-                        Color::ORANGE,
-                    );
+                    if let Some(ref sprite) = self.shooter_sprite {
+                        // Shooter: First row (4 frames) = idle animation
+                        //          Remaining rows = death animation (7 frames starting at row 1, col 0)
+                        // Use idle animation with custom sequence [0,1,2,3,2,1,0]
+                        let frame_x = self.shooter_anim.get_frame_index();
+                        let frame_y = 0; // First row for idle
+                        self.draw_animated_sprite(
+                            &mut d2d,
+                            sprite,
+                            frame_x,
+                            frame_y,
+                            45, // frame width
+                            51, // frame height
+                            e.x,
+                            e.y,
+                            45, // sprite width
+                            51, // sprite height
+                        );
+                    }
                 }
                 _ => {}
             }
@@ -523,14 +703,36 @@ impl Scene for MazeScene {
         
         // ===== PLAYER (always visible, drawn on top) =====
         // Player is always drawn, even if outside FOV (shouldn't happen, but safe)
-        let player_px = self.player_x as i32 * self.tile_size + self.tile_size / 2;
-        let player_py = self.player_y as i32 * self.tile_size + self.tile_size / 2;
-        d2d.draw_circle(
-            player_px,
-            player_py,
-            self.tile_size as f32 * 0.4,
-            Color::BLUE,
-        );
+        if let Some(ref sprite) = self.player_sprite {
+            // Player: 3 frames per row, 4 rows (directions)
+            // Row 0 = North, Row 1 = East, Row 2 = South, Row 3 = West
+            let frame_x = self.player_anim.get_frame_index().min(2); // Clamp to 3 frames (0-2)
+            let frame_y = self.player_direction.min(3); // Clamp to 4 directions (0-3)
+            let player_frame_width = sprite.width() / 3; // 3 frames per row
+            let player_frame_height = sprite.height() / 4; // 4 rows
+            self.draw_animated_sprite(
+                &mut d2d,
+                sprite,
+                frame_x,
+                frame_y,
+                player_frame_width,
+                player_frame_height,
+                self.player_x,
+                self.player_y,
+                player_frame_width,
+                player_frame_height,
+            );
+        } else {
+            // Fallback to circle if sprite not loaded
+            let player_px = self.player_x as i32 * self.tile_size + self.tile_size / 2;
+            let player_py = self.player_y as i32 * self.tile_size + self.tile_size / 2;
+            d2d.draw_circle(
+                player_px,
+                player_py,
+                self.tile_size as f32 * 0.4,
+                Color::BLUE,
+            );
+        }
         
         // End 2D camera mode
         drop(d2d);

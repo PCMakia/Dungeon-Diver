@@ -8,6 +8,7 @@ pub mod menu_scene;
 pub mod maze_scene;
 pub mod utils;
 pub mod npc;
+pub mod projectile;
 
 pub fn is_floor_tile(tile_id: i32) -> bool {
     matches!(

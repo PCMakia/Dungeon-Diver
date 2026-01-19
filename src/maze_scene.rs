@@ -5,6 +5,7 @@ use crate::scenes::{Scene, SceneSwitch};
 use crate::game_data::GameData;
 use crate::{is_floor_tile, is_wall_tile};
 use crate::npc::{Health, EntityState, ContactDamage, EntityStats};
+use crate::projectile::{Projectile, ProjectileSystem};
 use std::fs::File;
 use std::io::Read;
 use std::env;
@@ -173,6 +174,9 @@ pub struct MazeScene {
     contact_damage: ContactDamage,
     entity_stats: EntityStats,
     player_stun_ticks: i32, // Number of ticks player is stunned (0 = not stunned)
+    
+    // Projectile system for shooting
+    projectile_system: ProjectileSystem,
 }
 
 
@@ -219,6 +223,9 @@ impl MazeScene {
             contact_damage: ContactDamage::default(),
             entity_stats: EntityStats::default(),
             player_stun_ticks: 0,
+            
+            // Initialize projectile system
+            projectile_system: ProjectileSystem::new(),
         }
     }
 
@@ -383,6 +390,109 @@ impl MazeScene {
         // This is where tank/shooter AI would go
         // For now, this is a placeholder
     }
+    
+    /// Handle player shooting
+    fn handle_shooting(&mut self, rl: &RaylibHandle) -> bool {
+        // Check for shooting input (Space, Enter, or gamepad button)
+        let should_shoot = rl.is_key_pressed(KeyboardKey::KEY_SPACE) || 
+                           rl.is_key_pressed(KeyboardKey::KEY_ENTER) ||
+                           (rl.is_gamepad_available(0) && (
+                               rl.is_gamepad_button_pressed(0, GamepadButton::GAMEPAD_BUTTON_RIGHT_FACE_DOWN) || // A/X button
+                               rl.is_gamepad_button_pressed(0, GamepadButton::GAMEPAD_BUTTON_RIGHT_FACE_RIGHT)   // B/Circle button
+                           ));
+        
+        if should_shoot && self.player_stun_ticks <= 0 {
+            // Create projectile based on player position and direction
+            let projectile = Projectile::from_player(
+                self.player_x,
+                self.player_y,
+                self.player_direction,
+                self.tile_size
+            );
+            
+            // Try to fire projectile (returns true if successful, false if on cooldown)
+            return self.projectile_system.fire_projectile(projectile);
+        }
+        
+        false
+    }
+    
+    /// Update projectiles and check for collisions
+    fn update_projectiles(&mut self, dt: f32) {
+        // Update all projectiles
+        self.projectile_system.update(dt);
+        
+        // Check for collisions with walls and enemies
+        let projectiles = &mut self.projectile_system.projectiles;
+        let mut projectiles_to_remove = Vec::new();
+        
+        for (i, projectile) in projectiles.iter().enumerate() {
+            // Get tile position of projectile
+            let (tile_x, tile_y) = projectile.get_tile_position(self.tile_size);
+            
+            // Check if out of bounds
+            if tile_x >= self.map.grid_w || tile_y >= self.map.grid_h {
+                projectiles_to_remove.push(i);
+                continue;
+            }
+            
+            // Check collision with walls
+            let tile_id = self.map.tiles[tile_y][tile_x];
+            if is_wall_tile(tile_id) {
+                projectiles_to_remove.push(i);
+                continue;
+            }
+            
+            // Check collision with enemies (only for player projectiles)
+            if projectile.is_player_projectile {
+                let projectile_rect = projectile.get_collision_rect();
+                
+                for (j, entity) in self.entity_states.iter_mut().enumerate() {
+                    // Skip dead entities
+                    if !entity.hp.is_alive() {
+                        continue;
+                    }
+                    
+                    // Skip non-enemy entities
+                    if entity.kind != "tank" && entity.kind != "shooter" {
+                        continue;
+                    }
+                    
+                    // Create entity rectangle
+                    let entity_rect = Rectangle {
+                        x: (entity.x as i32 * self.tile_size + self.tile_size / 4) as f32,
+                        y: (entity.y as i32 * self.tile_size + self.tile_size / 4) as f32,
+                        width: (self.tile_size / 2) as f32,
+                        height: (self.tile_size / 2) as f32,
+                    };
+                    
+                    // Check for collision
+                    if projectile_rect.check_collision_recs(&entity_rect) {
+                        // Deal damage to enemy
+                        let enemy_died = entity.hp.take_damage(projectile.damage);
+                        
+                        // Mark projectile for removal
+                        projectiles_to_remove.push(i);
+                        
+                        // If enemy died, add points
+                        if enemy_died {
+                            // TODO: Add points or other effects when enemy dies
+                        }
+                        
+                        break;
+                    }
+                }
+            }
+        }
+        
+        // Remove projectiles in reverse order to avoid index issues
+        projectiles_to_remove.sort_by(|a, b| b.cmp(a));
+        for i in projectiles_to_remove {
+            if i < projectiles.len() {
+                projectiles.remove(i);
+            }
+        }
+    }
     fn draw_tile(&self, d: &mut RaylibDrawHandle, tile_id: i32, x: usize, y: usize) {
         let tileset = match &self.tileset {
             Some(t) => t,
@@ -526,6 +636,9 @@ impl Scene for MazeScene {
             return SceneSwitch::Push(Box::new(PauseScene));
         }
         
+        // Handle shooting input (works even when stunned for better responsiveness)
+        self.handle_shooting(rl);
+        
         // Don't queue movement if player is stunned
         if self.player_stun_ticks > 0 {
             return SceneSwitch::None;
@@ -661,6 +774,9 @@ impl Scene for MazeScene {
         for entity in &mut self.entity_states {
             entity.update_cooldown(dt);
         }
+        
+        // Update projectiles every frame (not tick-based for smooth movement)
+        self.update_projectiles(dt);
         
         // Tick-based game logic
         self.tick_timer += dt;
@@ -842,6 +958,22 @@ impl Scene for MazeScene {
                 player_py,
                 self.tile_size as f32 * 0.4,
                 Color::BLUE,
+            );
+        }
+        
+        // Draw projectiles
+        for projectile in &self.projectile_system.projectiles {
+            let color = if projectile.is_player_projectile {
+                Color::BLUE
+            } else {
+                Color::RED
+            };
+            
+            d2d.draw_circle(
+                projectile.x as i32,
+                projectile.y as i32,
+                4.0,
+                color,
             );
         }
         

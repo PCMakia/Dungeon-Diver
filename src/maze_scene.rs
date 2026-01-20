@@ -200,7 +200,7 @@ impl MazeScene {
             },
             fov_radius: 7, 
             tick_timer: 0.0,
-            tick_rate: 0.22, // increase for slower tick game
+            tick_rate: 0.15, // increase for slower tick game
             queued_move: None,
             last_gamepad_direction: None,
             player_sprite: None,
@@ -889,7 +889,7 @@ impl MazeScene {
                     center_y,
                     dir_x,
                     dir_y,
-                    100.0,  // Speed
+                    200.0,  // Speed
                     1,      // Damage
                     false,  // Not player projectile (mage bullet)
                 );

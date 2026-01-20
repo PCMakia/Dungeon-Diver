@@ -94,13 +94,14 @@ impl Scene for MenuScene {
         }
     }
 
-    fn handle_input(&mut self, _rl: &mut RaylibHandle, _data: &mut GameData) -> SceneSwitch {
+    fn handle_input(&mut self, _rl: &mut RaylibHandle, data: &mut GameData) -> SceneSwitch {
 
         if _rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
             let click = _rl.get_mouse_position();
             let rectangle = Rectangle::new(250.0, 200.0, 150.0, 50.0);
             if  check_collision_point_rect(&click, &rectangle) {
                 println!("clicked on stage I");
+                data.start_level(0);
                 return SceneSwitch::Push(Box::new(MazeScene::from_map("assets/maps/mapTest.json".to_string())));
             }
         }
@@ -110,6 +111,7 @@ impl Scene for MenuScene {
             let rectangle = Rectangle::new(450.0, 200.0, 150.0, 50.0);
             if  check_collision_point_rect(&click, &rectangle) {
                 println!("clicked on stage II");
+                data.start_level(1);
                 return SceneSwitch::Push(Box::new(MazeScene::from_map("assets/maps/mapDesert.json".to_string())));
             }
         }
@@ -119,6 +121,7 @@ impl Scene for MenuScene {
             let rectangle = Rectangle::new(650.0, 200.0, 150.0, 50.0);
             if  check_collision_point_rect(&click, &rectangle) {
                 println!("clicked on stage III");
+                data.start_level(2);
                 return SceneSwitch::Push(Box::new(MazeScene::from_map("assets/maps/mapJungle.json".to_string())));
             }
         }
@@ -128,6 +131,7 @@ impl Scene for MenuScene {
             let rectangle = Rectangle::new(850.0, 200.0, 150.0, 50.0);
             if  check_collision_point_rect(&click, &rectangle) {
                 println!("clicked on stage IV");
+                data.start_level(3);
                 return SceneSwitch::Push(Box::new(MazeScene::from_map("assets/maps/mapCastle.json".to_string())));
             }
         }
@@ -137,6 +141,7 @@ impl Scene for MenuScene {
             let rectangle = Rectangle::new(350.0, 300.0, 150.0, 50.0);
             if  check_collision_point_rect(&click, &rectangle) {
                 println!("clicked on stage V");
+                data.start_level(4);
                 return SceneSwitch::Push(Box::new(MazeScene::from_map("assets/maps/mapOcean.json".to_string())));
             }   
         }
@@ -146,6 +151,7 @@ impl Scene for MenuScene {
             let rectangle = Rectangle::new(550.0, 300.0, 150.0, 50.0);
             if  check_collision_point_rect(&click, &rectangle) {
                 println!("clicked on stage VI");
+                data.start_level(5);
                 return SceneSwitch::Push(Box::new(MazeScene::from_map("assets/maps/mapHell.json".to_string())));
             }
         }
@@ -155,6 +161,7 @@ impl Scene for MenuScene {
             let rectangle = Rectangle::new(750.0, 300.0, 150.0, 50.0);
             if  check_collision_point_rect(&click, &rectangle) {
                 println!("clicked on stage VII");
+                data.start_level(6);
                 return SceneSwitch::Push(Box::new(MazeScene::from_map("assets/maps/mapFlesh.json".to_string())));
             }
         }
@@ -307,7 +314,7 @@ impl Scene for WinScene {
         if _rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
             let click = _rl.get_mouse_position();
             // Button rectangle for "Back to Menu" 
-            let button_rect = Rectangle::new(450.0, 550.0, 300.0, 60.0);
+            let button_rect = Rectangle::new(450.0, 620.0, 300.0, 60.0);
             if check_collision_point_rect(&click, &button_rect) {
                 println!("Back to menu clicked");
                 // Replace WinScene to return to MenuScene
@@ -328,11 +335,25 @@ impl Scene for WinScene {
         d.clear_background(Color::WHITE);
         
         // Title
-        d.draw_text("Level Complete!", 400, 300, 50, Color::BLACK);
-        
+        d.draw_text("Level Complete!", 400, 300, 60, Color::BLACK);
+        let stage = data.current_stage;
+        let best = data.stage_high_scores[stage];
+
+        d.draw_text(
+            &format!(
+                "Stage {}   Best: {}",
+                stage + 1,
+                best
+            ),
+            450,
+            400,
+            35,
+            Color::DARKVIOLET,
+        );
+                
         // Score display
         let score_message = format!("Final Score: {}", data.points);
-        d.draw_text(score_message.as_str(), 500, 400, 30, Color::BLACK);
+        d.draw_text(score_message.as_str(), 500, 470, 30, Color::BLACK);
         
         // Time display
         if let Some(elapsed) = data.get_elapsed_time() {
@@ -340,21 +361,21 @@ impl Scene for WinScene {
             let seconds = (elapsed as u32) % 60;
             let milliseconds = ((elapsed % 1.0) * 100.0) as u32;
             let time_message = format!("Time: {:02}:{:02}.{:02}", minutes, seconds, milliseconds);
-            d.draw_text(time_message.as_str(), 500, 450, 30, Color::BLACK);
+            d.draw_text(time_message.as_str(), 500, 520, 30, Color::BLACK);
         } else {
-            d.draw_text("Time: --:--", 500, 450, 30, Color::GRAY);
+            d.draw_text("Time: --:--", 500, 520, 30, Color::GRAY);
         }
         
         // Back to Menu button
-        let button_rect = Rectangle::new(450.0, 550.0, 300.0, 60.0);
+        let button_rect = Rectangle::new(450.0, 620.0, 300.0, 60.0);
         let button_color = if check_collision_point_rect(&d.get_mouse_position(), &button_rect) {
             // Darken green on hover
             Color { r: 0, g: 150, b: 0, a: 255 }
         } else {
             Color::GREEN
         };
-        d.draw_rectangle(450, 550, 300, 60, button_color);
-        d.draw_text("Back to Menu", 515, 570, 25, Color::WHITE);
+        d.draw_rectangle(450, 620, 300, 60, button_color);
+        d.draw_text("Back to Menu", 515, 640, 25, Color::WHITE);
     }
 
     fn on_exit(&mut self, _rl: &mut RaylibHandle, data: &mut GameData) {

@@ -7,8 +7,29 @@ use raylib::prelude::*;
 use raylib::ffi;
 use std::time::Instant;
 
+use serde::{Serialize, Deserialize};
+
+#[derive(Serialize, Deserialize)]
+pub struct SaveData {
+    pub stage_high_scores: [u32; 7],
+}
+
+
+impl Default for SaveData {
+    fn default() -> Self {
+        Self {
+            stage_high_scores: [0; 7],
+        }
+    }
+}
+
 pub struct GameData {
     pub points: u32,
+
+    // Local scores
+    pub current_stage: usize,          
+    pub stage_high_scores: [u32; 7],
+
     pub screen_width: i32,
     pub screen_height: i32,
     pub thread: Option<RaylibThread>,
@@ -23,21 +44,31 @@ pub struct GameData {
     // For WinScene: track if we're playing full or loop version
     pub win_music_full_played: bool,
     pub win_music_loop: Option<ffi::Music>,
+
+    
 }
 
 impl GameData {
-    pub fn new(width: i32, heigth: i32) -> Self {
+    pub fn new(width: i32, height: i32) -> Self {
+        let save = load_save();
+
         Self {
             points: 0,
+            current_stage: 0,
+            stage_high_scores: save.stage_high_scores,
+
             screen_width: width,
-            screen_height: heigth,
+            screen_height: height,
             thread: None,
+
             level_start_time: None,
             level_completion_time: None,
+
             current_music: None,
             music_volume: 0.0,
             music_fade_timer: 0.0,
-            music_fade_duration: 1.0, // 1 second fade-in
+            music_fade_duration: 1.0,
+
             win_music_full_played: false,
             win_music_loop: None,
         }
@@ -57,11 +88,28 @@ impl GameData {
         self.level_start_time = Some(Instant::now());
         self.level_completion_time = None;
     }
+    pub fn start_level(&mut self, stage: usize) {
+        self.current_stage = stage;
+        self.points = 0;
+        self.start_level_timer();
+    }
+
     
     /// Record level completion time
     pub fn complete_level(&mut self) {
         self.level_completion_time = Some(Instant::now());
+        let stage = self.current_stage;
+
+        if self.points > self.stage_high_scores[stage] {
+            self.stage_high_scores[stage] = self.points;
+
+            save_save(&SaveData {
+                stage_high_scores: self.stage_high_scores,
+            });
+        }
     }
+
+    
     
     /// Get elapsed time in seconds (returns None if level hasn't started or completed)
     pub fn get_elapsed_time(&self) -> Option<f32> {
@@ -149,5 +197,39 @@ impl GameData {
                 self.win_music_loop = Some(loop_music);
             }
         }
+    }
+}
+
+
+use std::fs::{File, create_dir_all};
+use std::io::{Read, Write};
+use std::path::PathBuf;
+
+fn save_path() -> PathBuf {
+    let mut path = dirs::data_local_dir().unwrap();
+    path.push("dungeon_diver");
+    create_dir_all(&path).ok();
+    path.push("save_score.json");
+    path
+}
+
+pub fn load_save() -> SaveData {
+    let path = save_path();
+
+    if let Ok(mut file) = File::open(path) {
+        let mut s = String::new();
+        file.read_to_string(&mut s).ok();
+        serde_json::from_str(&s).unwrap_or_default()
+    } else {
+        SaveData::default()
+    }
+}
+
+pub fn save_save(data: &SaveData) {
+    let path = save_path();
+    if let Ok(mut file) = File::create(path) {
+        let _ = file.write_all(
+            serde_json::to_string_pretty(data).unwrap().as_bytes()
+        );
     }
 }

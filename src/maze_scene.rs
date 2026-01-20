@@ -1281,8 +1281,6 @@ impl Scene for MazeScene {
         // Initialize camera position
         self.update_camera(data);
         
-        // Start level timer when entering the maze
-        data.start_level_timer();
     }
 
 

@@ -15,15 +15,6 @@ struct ProjectileAnimation {
 
 impl ProjectileAnimation {
     
-    fn new(total_frames: usize, frame_duration: f32) -> Self {
-        Self {
-            current_frame: 0,
-            frame_timer: 0.0,
-            frame_duration,
-            total_frames,
-            frame_sequence: None,
-        }
-    }
     
     /// Create animation with custom frame sequence
     fn with_sequence(frame_sequence: Vec<usize>, frame_duration: f32) -> Self {
@@ -130,7 +121,7 @@ impl Projectile {
             center_y,
             dir_x,
             dir_y,
-            300.0,  // Speed in pixels per second
+            350.0,  // Speed in pixels per second
             1,      // Damage
             true,   // Is player projectile
         )

@@ -4,10 +4,11 @@ use crate::menu_scene::WinScene;
 use crate::scenes::{Scene, SceneSwitch};
 use crate::game_data::GameData;
 use crate::{is_floor_tile, is_wall_tile};
-use crate::npc::{Health, EntityState, ContactDamage, EntityStats};
+use crate::npc::{Health, EntityState, ContactDamage, EntityStats, AIState};
 use crate::projectile::{Projectile, ProjectileSystem};
 use std::fs::File;
 use std::io::Read;
+use rand::Rng;
 use std::env;
 use std::path::Path;
 use serde::Deserialize;
@@ -23,17 +24,6 @@ struct AnimationState {
 }
 
 impl AnimationState {
-    /// Create animation with simple sequential frames
-    fn new(total_frames: usize, frame_duration: f32) -> Self {
-        Self {
-            current_frame: 0,
-            frame_timer: 0.0,
-            frame_duration,
-            total_frames,
-            is_playing: true,
-            frame_sequence: None,
-        }
-    }
     
     /// Create animation with custom frame sequence
     fn with_sequence(frame_sequence: Vec<usize>, frame_duration: f32) -> Self {
@@ -68,11 +58,7 @@ impl AnimationState {
         }
     }
     
-    fn reset(&mut self) {
-        self.current_frame = 0;
-        self.frame_timer = 0.0;
-        self.is_playing = true;
-    }
+    
 }
 
 /// Resolve asset path by trying multiple relative path options
@@ -166,7 +152,7 @@ pub struct MazeScene {
     player_anim: AnimationState,
     tank_anim: AnimationState,
     shooter_anim: AnimationState,
-    shooter_death_anim: AnimationState,
+    
     
     // HP and combat system
     player_hp: Health,
@@ -224,9 +210,7 @@ impl MazeScene {
             tank_anim: AnimationState::with_sequence(vec![0, 1, 2, 2, 1, 0], 0.15),
             // Shooter: 4 frames idle:
             shooter_anim: AnimationState::with_sequence(vec![0, 1, 2, 3, 3, 2, 1, 0], 0.2),
-            // Shooter: 7 frames death animation
-            shooter_death_anim: AnimationState::with_sequence(vec![0, 1, 2, 3, 4, 5, 6], 0.15),
-            
+         
             // Initialize HP system
             player_hp: Health::new(10), 
             entity_states: Vec::new(),
@@ -397,11 +381,562 @@ impl MazeScene {
         d.draw_texture_pro(sprite, src, dst, Vector2::zero(), 0.0, Color::WHITE);
     }
     
-    /// Update enemy AI on game tick (placeholder for future implementation)
+    /// Static helper: Check if there's a clear path (line of sight) between two points
+    /// Returns true if player and entity are in the same hallway (no walls blocking)
+    fn has_line_of_sight_static(
+        x1: usize, y1: usize, x2: usize, y2: usize,
+        grid_w: usize, grid_h: usize, tiles: &[Vec<i32>]
+    ) -> bool {
+        let dx = (x2 as i32 - x1 as i32).signum();
+        let dy = (y2 as i32 - y1 as i32).signum();
+        
+        // Check horizontal and vertical paths
+        if dx == 0 {
+            // Vertical path
+            let start_y = y1.min(y2);
+            let end_y = y1.max(y2);
+            for y in start_y..=end_y {
+                if y >= grid_h {
+                    return false;
+                }
+                let tile_id = tiles[y][x1];
+                if is_wall_tile(tile_id) {
+                    return false;
+                }
+            }
+            return true;
+        } else if dy == 0 {
+            // Horizontal path
+            let start_x = x1.min(x2);
+            let end_x = x1.max(x2);
+            for x in start_x..=end_x {
+                if x >= grid_w {
+                    return false;
+                }
+                let tile_id = tiles[y1][x];
+                if is_wall_tile(tile_id) {
+                    return false;
+                }
+            }
+            return true;
+        }
+        
+        // Diagonal or complex path - check if it's a valid L-shaped path (same hallway)
+        // Check horizontal then vertical
+        let mut valid = true;
+        for x in (x1.min(x2))..=(x1.max(x2)) {
+            if x >= grid_w || y1 >= grid_h {
+                valid = false;
+                break;
+            }
+            let tile_id = tiles[y1][x];
+            if is_wall_tile(tile_id) {
+                valid = false;
+                break;
+            }
+        }
+        if valid {
+            for y in (y1.min(y2))..=(y1.max(y2)) {
+                if y >= grid_h || x2 >= grid_w {
+                    valid = false;
+                    break;
+                }
+                let tile_id = tiles[y][x2];
+                if is_wall_tile(tile_id) {
+                    valid = false;
+                    break;
+                }
+            }
+        }
+        if valid {
+            return true;
+        }
+        
+        // Check vertical then horizontal
+        valid = true;
+        for y in (y1.min(y2))..=(y1.max(y2)) {
+            if y >= grid_h || x1 >= grid_w {
+                valid = false;
+                break;
+            }
+            let tile_id = tiles[y][x1];
+            if is_wall_tile(tile_id) {
+                valid = false;
+                break;
+            }
+        }
+        if valid {
+            for x in (x1.min(x2))..=(x1.max(x2)) {
+                if x >= grid_w || y2 >= grid_h {
+                    valid = false;
+                    break;
+                }
+                let tile_id = tiles[y2][x];
+                if is_wall_tile(tile_id) {
+                    valid = false;
+                    break;
+                }
+            }
+        }
+        
+        valid
+    }
+    
+    
+    /// Calculate Manhattan distance between two points
+    fn manhattan_distance(x1: usize, y1: usize, x2: usize, y2: usize) -> usize {
+        ((x1 as i32 - x2 as i32).abs() + (y1 as i32 - y2 as i32).abs()) as usize
+    }
+    
+    
+    /// Static helper: Get valid adjacent tiles
+    fn get_valid_adjacent_tiles_static(
+        x: usize, y: usize,
+        grid_w: usize, grid_h: usize,
+        is_valid_move: &dyn Fn(usize, usize) -> bool,
+    ) -> Vec<(usize, usize)> {
+        let mut valid = Vec::new();
+        
+        // Check all 4 directions
+        let directions = [(0, -1), (1, 0), (0, 1), (-1, 0)];
+        for (dx, dy) in &directions {
+            let new_x = x as i32 + dx;
+            let new_y = y as i32 + dy;
+            
+            if new_x >= 0 && new_y >= 0 && 
+               new_x < grid_w as i32 && new_y < grid_h as i32 {
+                let nx = new_x as usize;
+                let ny = new_y as usize;
+                
+                if is_valid_move(nx, ny) {
+                    valid.push((nx, ny));
+                }
+            }
+        }
+        
+        valid
+    }
+    
+    /// Update enemy AI on game tick
     fn update_enemies(&mut self) {
         // Enemies update even outside FOV - simulation is separate from rendering
-        // This is where tank/shooter AI would go
-        // For now, this is a placeholder
+        
+        // Store actions to apply after iteration (to avoid borrowing conflicts)
+        let mut projectiles_to_spawn = Vec::new();
+        let player_x = self.player_x;
+        let player_y = self.player_y;
+        let tile_size = self.tile_size;
+        let grid_w = self.map.grid_w;
+        let grid_h = self.map.grid_h;
+        let tiles = &self.map.tiles; // Reference to tiles for line-of-sight checks
+        
+        // First pass: calculate aggression zones and update states/cooldowns
+        for entity in &mut self.entity_states {
+            if !entity.hp.is_alive() {
+                continue;
+            }
+            
+            // Calculate distance to player
+            let distance = Self::manhattan_distance(entity.x, entity.y, player_x, player_y);
+            
+            // Check if player is in aggression zone (6 tiles, with line of sight)
+            let in_aggression_zone = distance <= 6 && 
+                                     Self::has_line_of_sight_static(
+                                         entity.x, entity.y, player_x, player_y,
+                                         grid_w, grid_h, tiles);
+            
+            // Update AI state
+            if in_aggression_zone && entity.ai_state == AIState::Wandering {
+                entity.ai_state = AIState::Attacking;
+            } else if !in_aggression_zone && entity.ai_state == AIState::Attacking {
+                entity.ai_state = AIState::Wandering;
+            }
+            
+            // Decrease cooldowns
+            if entity.movement_cooldown > 0 {
+                entity.movement_cooldown -= 1;
+            }
+            if entity.shoot_cooldown > 0 {
+                entity.shoot_cooldown -= 1;
+            }
+            
+           
+           
+        }
+        
+        // Second pass: execute AI behaviors
+        // Collect entity positions for collision checking
+        let entity_positions: Vec<(usize, usize)> = self.entity_states.iter()
+            .filter(|e| e.hp.is_alive())
+            .map(|e| (e.x, e.y))
+            .collect();
+        
+        // Extract map data for helper functions
+        let is_valid_move_fn = |x: usize, y: usize| -> bool {
+            if x >= grid_w || y >= grid_h {
+                return false;
+            }
+            let tile_id = tiles[y][x];
+            tile_id >= 0 && !is_wall_tile(tile_id)
+        };
+        
+        for entity in &mut self.entity_states {
+            if !entity.hp.is_alive() {
+                continue;
+            }
+            
+            // Execute AI behavior based on state
+            match entity.ai_state {
+                AIState::Wandering => {
+                    Self::handle_wandering_static(
+                        entity, &entity_positions, 
+                        grid_w, grid_h, &is_valid_move_fn);
+                }
+                AIState::Attacking => {
+                    match entity.kind.as_str() {
+                        "shooter" => {
+                            if let Some(projectile) = Self::handle_shooter_attack_static(
+                                entity, player_x, player_y, &entity_positions, 
+                                tile_size, grid_w, grid_h, tiles, &is_valid_move_fn) {
+                                projectiles_to_spawn.push(projectile);
+                            }
+                        }
+                        "tank" => {
+                            // Check if tank would move to player position and deal damage if so
+                            let path = Self::find_path_static(
+                                entity.x, entity.y, player_x, player_y,
+                                grid_w, grid_h, &is_valid_move_fn);
+                            
+                            if let Some(&next_pos) = path.first() {
+                                // If tank would move to player's position, deal damage but don't move
+                                if next_pos.0 == player_x && next_pos.1 == player_y {
+                                    if entity.can_deal_damage() {
+                                        // Double damage for tank attacking player
+                                        let damage = self.contact_damage.tank_damage * 2;
+                                        let player_died = self.player_hp.take_damage(damage);
+                                        entity.reset_damage_cooldown(self.contact_damage.cooldown_time);
+                                        
+                                        // Stun player for 1 ticks
+                                        self.player_stun_ticks = 1;
+                                        
+                                        if player_died {
+                                            println!("Player died from tank contact! HP: {}/{}", 
+                                                    self.player_hp.current, self.player_hp.max);
+                                        }
+                                    }
+                                    // Don't move - set cooldown but keep tank in current position
+                                    if entity.movement_cooldown == 0 {
+                                        entity.movement_cooldown = 5; // Move every 4 ticks
+                                    }
+                                } else {
+                                    // Normal movement - tank not trying to step on player
+                                    Self::handle_tank_attack_static(
+                                        entity, player_x, player_y, &entity_positions,
+                                        grid_w, grid_h, &is_valid_move_fn);
+                                }
+                            } else {
+                                // No valid path, use normal attack behavior
+                                Self::handle_tank_attack_static(
+                                    entity, player_x, player_y, &entity_positions,
+                                    grid_w, grid_h, &is_valid_move_fn);
+                            }
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        
+        // Spawn projectiles after iteration
+        for projectile in projectiles_to_spawn {
+            self.projectile_system.fire_projectile(projectile);
+        }
+    }
+    
+    /// Static helper: Handle wandering behavior: random movement within 2 tiles of spawn
+    fn handle_wandering_static(
+        entity: &mut EntityState, 
+        entity_positions: &[(usize, usize)],
+        grid_w: usize,
+        grid_h: usize,
+        is_valid_move: &dyn Fn(usize, usize) -> bool,
+    ) {
+        // Can only move once every 10 game ticks
+        if entity.movement_cooldown > 0 {
+            return;
+        }
+        
+        // Find random tile within 2 tiles radius of spawn
+        let mut candidates = Vec::new();
+        for dy in -2..=2 {
+            for dx in -2..=2 {
+                let new_x = entity.spawn_x as i32 + dx;
+                let new_y = entity.spawn_y as i32 + dy;
+                let distance = Self::manhattan_distance(
+                    entity.spawn_x, entity.spawn_y,
+                    new_x.max(0) as usize, new_y.max(0) as usize
+                );
+                
+                if distance <= 2 && 
+                   new_x >= 0 && new_y >= 0 &&
+                   new_x < grid_w as i32 && 
+                   new_y < grid_h as i32 {
+                    let nx = new_x as usize;
+                    let ny = new_y as usize;
+                    if is_valid_move(nx, ny) {
+                        candidates.push((nx, ny));
+                    }
+                }
+            }
+        }
+        
+        if !candidates.is_empty() {
+            // Randomly select a candidate tile
+            let mut rng = rand::rng();
+            let target = candidates[rng.random_range(0..candidates.len())];
+            
+            // If target is blocked by a wall, find closest valid adjacent tile
+            if !is_valid_move(target.0, target.1) {
+                let adjacent = Self::get_valid_adjacent_tiles_static(
+                    entity.x, entity.y, grid_w, grid_h, is_valid_move);
+                // Randomly select from adjacent tiles
+                if !adjacent.is_empty() {
+                    let new_pos = adjacent[rng.random_range(0..adjacent.len())];
+                    let blocked = entity_positions.contains(&new_pos);
+                    if !blocked {
+                        entity.x = new_pos.0;
+                        entity.y = new_pos.1;
+                        entity.movement_cooldown = 13;
+                    }
+                }
+            } else {
+                // Move one step towards target if valid
+                let path = Self::find_path_static(
+                    entity.x, entity.y, target.0, target.1,
+                    grid_w, grid_h, is_valid_move);
+                if let Some(next_pos) = path.get(0) {
+                    // Check if next position is valid and not blocked by other entity
+                    let blocked = entity_positions.contains(&(next_pos.0, next_pos.1));
+                    if !blocked {
+                        entity.x = next_pos.0;
+                        entity.y = next_pos.1;
+                        entity.movement_cooldown = 13;
+                    }
+                }
+            }
+        } else {
+            // No valid candidates, try to move to a random valid adjacent tile
+            let adjacent = Self::get_valid_adjacent_tiles_static(
+                entity.x, entity.y, grid_w, grid_h, is_valid_move);
+            if !adjacent.is_empty() {
+                let mut rng = rand::rng();
+                let new_pos = adjacent[rng.random_range(0..adjacent.len())];
+                let blocked = entity_positions.contains(&new_pos);
+                if !blocked {
+                    entity.x = new_pos.0;
+                    entity.y = new_pos.1;
+                    entity.movement_cooldown = 13;
+                }
+            }
+        }
+    }
+    
+    /// Static helper: Simple pathfinding: move one step towards target
+    fn find_path_static(
+        start_x: usize, start_y: usize, target_x: usize, target_y: usize,
+        grid_w: usize, grid_h: usize,
+        is_valid_move: &dyn Fn(usize, usize) -> bool,
+    ) -> Vec<(usize, usize)> {
+        let mut path = Vec::new();
+        let mut current_x = start_x;
+        let mut current_y = start_y;
+        
+        // Simple greedy: move towards target
+        while (current_x != target_x || current_y != target_y) && path.len() < 10 {
+            let dx = target_x as i32 - current_x as i32;
+            let dy = target_y as i32 - current_y as i32;
+            
+            let next_x = if dx != 0 {
+                current_x as i32 + dx.signum()
+            } else {
+                current_x as i32
+            };
+            
+            let next_y = if dy != 0 {
+                current_y as i32 + dy.signum()
+            } else {
+                current_y as i32
+            };
+            
+            if next_x >= 0 && next_y >= 0 &&
+               next_x < grid_w as i32 &&
+               next_y < grid_h as i32 &&
+               is_valid_move(next_x as usize, next_y as usize) {
+                path.push((next_x as usize, next_y as usize));
+                current_x = next_x as usize;
+                current_y = next_y as usize;
+            } else {
+                break;
+            }
+        }
+        
+        path
+    }
+    
+
+    
+    /// Static helper: Handle shooter attack behavior: position 5 tiles away and shoot
+    /// Returns Some(Projectile) if a shot should be fired, None otherwise
+    fn handle_shooter_attack_static(
+        entity: &mut EntityState, 
+        player_x: usize, 
+        player_y: usize, 
+        entity_positions: &[(usize, usize)],
+        tile_size: i32,
+        grid_w: usize,
+        grid_h: usize,
+        tiles: &[Vec<i32>],
+        is_valid_move: &dyn Fn(usize, usize) -> bool,
+    ) -> Option<Projectile> {
+        let distance = Self::manhattan_distance(entity.x, entity.y, player_x, player_y);
+        let desired_distance = 5;
+        let mut projectile_to_fire = None;
+        
+        // Movement: can move once per game tick in attacking mode
+        if entity.movement_cooldown == 0 {
+            let dx = player_x as i32 - entity.x as i32;
+            let dy = player_y as i32 - entity.y as i32;
+            
+            // Determine alignment direction (which axis has larger difference)
+            let mut new_x = entity.x;
+            let mut new_y = entity.y;
+            
+            if dx.abs() > dy.abs() {
+                // Align Y first, then adjust X to maintain distance
+                if dy != 0 {
+                    new_y = (entity.y as i32 + dy.signum()).max(0) as usize;
+                    if new_y >= grid_h {
+                        new_y = entity.y;
+                    }
+                }
+                // Adjust X to maintain ~5 tile distance
+                if distance > desired_distance && dx > 0 {
+                    new_x = entity.x.saturating_add(1).min(grid_w.saturating_sub(1));
+                } else if distance > desired_distance && dx < 0 {
+                    new_x = entity.x.saturating_sub(1);
+                } else if distance < desired_distance && dx > 0 {
+                    new_x = entity.x.saturating_sub(1);
+                } else if distance < desired_distance && dx < 0 {
+                    new_x = entity.x.saturating_add(1).min(grid_w.saturating_sub(1));
+                }
+            } else {
+                // Align X first, then adjust Y
+                if dx != 0 {
+                    new_x = (entity.x as i32 + dx.signum()).max(0) as usize;
+                    if new_x >= grid_w {
+                        new_x = entity.x;
+                    }
+                }
+                // Adjust Y to maintain ~5 tile distance
+                if distance > desired_distance && dy > 0 {
+                    new_y = entity.y.saturating_add(1).min(grid_h.saturating_sub(1));
+                } else if distance > desired_distance && dy < 0 {
+                    new_y = entity.y.saturating_sub(1);
+                } else if distance < desired_distance && dy > 0 {
+                    new_y = entity.y.saturating_sub(1);
+                } else if distance < desired_distance && dy < 0 {
+                    new_y = entity.y.saturating_add(1).min(grid_h.saturating_sub(1));
+                }
+            }
+            
+            // Validate move
+            if is_valid_move(new_x, new_y) {
+                let blocked = entity_positions.contains(&(new_x, new_y));
+                if !blocked {
+                    entity.x = new_x;
+                    entity.y = new_y;
+                    entity.movement_cooldown = 2; // Can move every 2 ticks 
+                }
+            }
+        }
+        
+        // Shooting: once every 6 game ticks, and only if aligned with player
+        if entity.shoot_cooldown == 0 {
+            let dx = player_x as i32 - entity.x as i32;
+            let dy = player_y as i32 - entity.y as i32;
+            
+            // Check if aligned (same row or same column)
+            let is_aligned = (dx == 0 && dy != 0) || (dx != 0 && dy == 0);
+            
+            if is_aligned && Self::has_line_of_sight_static(
+                entity.x, entity.y, player_x, player_y,
+                grid_w, grid_h, tiles) {
+                // Determine direction
+                let (dir_x, dir_y) = if dx.abs() > dy.abs() {
+                    (dx.signum() as f32, 0.0)
+                } else {
+                    (0.0, dy.signum() as f32)
+                };
+                
+                // Create projectile
+                let center_x = (entity.x as i32 * tile_size + tile_size / 2) as f32;
+                let center_y = (entity.y as i32 * tile_size + tile_size / 2) as f32;
+                
+                let mut projectile = Projectile::new(
+                    center_x,
+                    center_y,
+                    dir_x,
+                    dir_y,
+                    100.0,  // Speed
+                    1,      // Damage
+                    false,  // Not player projectile (mage bullet)
+                );
+                // Extend lifetime to 10 seconds for shooter projectiles
+                projectile.lifetime = 10.0;
+                
+                entity.shoot_cooldown = 6; // Shoot every 6 ticks
+                projectile_to_fire = Some(projectile);
+            }
+        }
+        
+        projectile_to_fire
+    }
+    
+    /// Static helper: Handle tank attack behavior: chase player and deal contact damage
+    fn handle_tank_attack_static(
+        entity: &mut EntityState, 
+        player_x: usize, 
+        player_y: usize, 
+        entity_positions: &[(usize, usize)],
+        grid_w: usize,
+        grid_h: usize,
+        is_valid_move: &dyn Fn(usize, usize) -> bool,
+    ) {
+        // Can only move once every 6 game ticks
+        if entity.movement_cooldown > 0 {
+            return;
+        }
+        
+        // Move towards player
+        let path = Self::find_path_static(
+            entity.x, entity.y, player_x, player_y,
+            grid_w, grid_h, is_valid_move);
+        if let Some(&next_pos) = path.first() {
+            // Don't allow tank to step on player's position
+            if next_pos.0 == player_x && next_pos.1 == player_y {
+                // Skip movement - tank will deal damage, but not move here
+                return;
+            }
+            
+            // Check if blocked by another entity
+            let blocked = entity_positions.contains(&(next_pos.0, next_pos.1));
+            
+            if !blocked {
+                entity.x = next_pos.0;
+                entity.y = next_pos.1;
+                entity.movement_cooldown = 6; // Move every 6 ticks
+            }
+        }
     }
     
     /// Handle player shooting
@@ -501,7 +1036,7 @@ impl MazeScene {
                                 // Award different points per enemy type
                                 match entity.kind.as_str() {
                                     "tank" => data.add_points(100),
-                                    "shooter" => data.add_points(50),
+                                    "shooter" => data.add_points(250),
                                     _ => {}
                                 }
 
@@ -516,6 +1051,35 @@ impl MazeScene {
                         }
                         
                         break;
+                    }
+                }
+            } else {
+                // Check collision with player (for enemy projectiles)
+                let projectile_rect = projectile.get_collision_rect();
+                
+                // Create player rectangle
+                let player_rect = Rectangle {
+                    x: (self.player_x as i32 * self.tile_size + self.tile_size / 4) as f32,
+                    y: (self.player_y as i32 * self.tile_size + self.tile_size / 4) as f32,
+                    width: (self.tile_size / 2) as f32,
+                    height: (self.tile_size / 2) as f32,
+                };
+                
+                // Check for collision
+                if projectile_rect.check_collision_recs(&player_rect) {
+                    // Deal damage to player
+                    let player_died = self.player_hp.take_damage(projectile.damage);
+                    
+                    // Mark projectile for removal
+                    projectiles_to_remove.push(i);
+                    
+                    // Stun player for 2 ticks
+                    self.player_stun_ticks = 2;
+                    
+                    // Check for player death
+                    if player_died {
+                        println!("Player died from projectile! HP: {}/{}", 
+                                self.player_hp.current, self.player_hp.max);
                     }
                 }
             }
@@ -554,18 +1118,7 @@ impl MazeScene {
             dst, Vector2::zero(), 0.0, Color::WHITE);
     }
 
-    fn tile_src_rect(tile_id: i32, tile_size: i32, tileset_width: i32) -> Rectangle {
-            let cols = tileset_width / tile_size;
-            let x = (tile_id % cols) * tile_size;
-            let y = (tile_id / cols) * tile_size;
 
-            Rectangle {
-                x: x as f32,
-                y: y as f32,
-                width: tile_size as f32,
-                height: tile_size as f32,
-            }
-    }
 }
 
 impl Scene for MazeScene {
@@ -1056,11 +1609,6 @@ impl Scene for MazeScene {
                 }
                 "tank" => {
                     if let Some(ref sprite) = self.tank_sprite {
-                        let frames: &[(usize, usize)] = &[
-                            (2, 0), 
-                            (1, 1), 
-                            (0, 1), 
-                        ];
 
                         
                         let seq: &[(usize, usize)] = &[

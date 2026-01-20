@@ -58,24 +58,43 @@ impl ContactDamage {
     }
 }
 
-/// Entity state with HP tracking
-/// This extends MapEntity with runtime HP information
+/// AI state for enemies
+#[derive(Clone, Copy, PartialEq)]
+pub enum AIState {
+    Wandering,
+    Attacking,
+}
+
+/// Entity state with HP tracking and AI behavior
+/// This extends MapEntity with runtime HP information and AI state
 pub struct EntityState {
     pub kind: String,
     pub x: usize,
     pub y: usize,
     pub hp: Health,
     pub contact_damage_cooldown: f32, // Timer to prevent rapid damage
+    
+    // AI fields
+    pub spawn_x: usize,           // Original spawn position for wandering
+    pub spawn_y: usize,
+    pub ai_state: AIState,         // Current AI behavior state
+    pub movement_cooldown: i32,    // Game ticks until next movement allowed
+    pub shoot_cooldown: i32,       // Game ticks until next shot allowed (shooters only)
 }
 
 impl EntityState {
     pub fn new(kind: String, x: usize, y: usize, max_hp: i32) -> Self {
         Self {
-            kind,
+            kind: kind.clone(),
             x,
             y,
             hp: Health::new(max_hp),
             contact_damage_cooldown: 0.0,
+            spawn_x: x,
+            spawn_y: y,
+            ai_state: AIState::Wandering,
+            movement_cooldown: 0,
+            shoot_cooldown: 0,
         }
     }
     

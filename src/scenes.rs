@@ -2,7 +2,7 @@
 //! 
 use raylib::prelude::*;
 
-use crate::{game_data::GameData, scenes};
+use crate::{game_data::GameData};
 ///
 /// The SceneSwitch enum was conceived with the help of ChatGPT 5.2
 /// 
@@ -89,12 +89,12 @@ impl SceneManager {
             if top_scene.is_overlay() {
                 // Overlay scene: find and draw the last non-overlay scene (the game), then the overlay
                 // This prevents drawing menu scenes that might still be in the stack
-                let mut found_game_scene = false;
+                
                 for scene in self.scenes.iter().rev() {
                     if !scene.is_overlay() {
                         // Found the last non-overlay scene (the game)
                         scene.draw(d, data);
-                        found_game_scene = true;
+                        
                         break;
                     }
                 }

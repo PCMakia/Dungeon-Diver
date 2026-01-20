@@ -33,7 +33,7 @@ impl Scene for TitleScene {
         SceneSwitch::None
     }
 
-    fn draw(&self, d: &mut RaylibDrawHandle, data: &mut GameData) {
+    fn draw(&self, d: &mut RaylibDrawHandle, _data: &mut GameData) {
         d.clear_background(Color::WHITE);
         
         // Draw title: centered in top half (0-480)
@@ -52,7 +52,7 @@ pub struct MenuScene;
 impl Scene for MenuScene {
     fn on_enter(&mut self, _rl: &mut RaylibHandle, _data: &mut GameData) {}
 
-    fn handle_input(&mut self, _rl: &mut RaylibHandle, data: &mut GameData) -> SceneSwitch {
+    fn handle_input(&mut self, _rl: &mut RaylibHandle, _data: &mut GameData) -> SceneSwitch {
 
         if _rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
             let click = _rl.get_mouse_position();

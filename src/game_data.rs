@@ -9,6 +9,35 @@ use std::time::Instant;
 
 use serde::{Serialize, Deserialize};
 
+use std::ffi::CString;
+use std::path::Path;
+
+// Music implementation
+impl GameData {
+    pub fn play_stage_music(&mut self, path: &str) {
+        self.stop_music();
+
+        if !Path::new(path).exists() {
+            eprintln!("Music not found: {}", path);
+            return;
+        }
+
+        unsafe {
+            if let Ok(c_path) = CString::new(path) {
+                let mut music = ffi::LoadMusicStream(c_path.as_ptr());
+                music.looping = true;
+                ffi::SetMusicVolume(music, 0.0);
+                ffi::PlayMusicStream(music);
+
+                self.current_music = Some(music);
+                self.music_volume = 0.0;
+                self.music_fade_timer = 0.0;
+            }
+        }
+    }
+}
+
+
 #[derive(Serialize, Deserialize)]
 pub struct SaveData {
     pub stage_high_scores: [u32; 7],
@@ -22,6 +51,13 @@ impl Default for SaveData {
         }
     }
 }
+#[derive(Clone)]
+pub struct StageConfig {
+    pub id: usize,
+    pub map_path: String,
+    pub music_path: String,
+}
+
 
 pub struct GameData {
     pub points: u32,

@@ -8,7 +8,7 @@ use std::ffi::CString;
 
 use crate::menu_scene::WinScene;
 use crate::scenes::{Scene, SceneSwitch};
-use crate::game_data::GameData;
+use crate::game_data::{GameData, StageConfig};
 use crate::{is_floor_tile, is_wall_tile};
 use crate::npc::{Health, EntityState, ContactDamage, EntityStats, AIState};
 use crate::projectile::{Projectile, ProjectileSystem};
@@ -124,8 +124,10 @@ pub fn load_map(path: &str) -> MapData {
 }
 
 pub struct MazeScene {
-    pub map_path: String,   
+    
+    //pub map_path: String,   
 
+    pub stage: StageConfig,
     map: MapData,
 
     tileset: Option<Texture2D>, // Use Option since we can't load it in from_map
@@ -186,10 +188,14 @@ struct DeathAnim {
 
 
 impl MazeScene {
-    pub fn from_map(path: String) -> Self {
+    pub fn from_map(stage: StageConfig) -> Self {
+        let map = load_map(&stage.map_path);
+
         Self {
-            map_path: path.clone(),
-            map: load_map(&path),
+            //map_path: path.clone(),
+            stage,
+            map,
+
             tileset: None, 
             tile_size: 32,
             player_x: 0,
@@ -1129,7 +1135,7 @@ impl MazeScene {
 
 impl Scene for MazeScene {
     fn on_enter(&mut self, rl: &mut RaylibHandle, data: &mut GameData) {
-        self.map = load_map(&self.map_path);
+        self.map = load_map(&self.stage.map_path);
         self.tile_size = self.map.tile_size_px;
 
         // Load texture using the thread from GameData
@@ -1185,20 +1191,22 @@ impl Scene for MazeScene {
             self.projectile_system.set_mage_bullet_texture(mage_bullet_texture);
             
             // Load and play TestStage music using FFI
-            let music_path = resolve_asset_path("assets/SFX/BGM/TestStage/synesthesia.mp3");
-            if Path::new(&music_path).exists() {
-                unsafe {
-                    if let Ok(c_path) = CString::new(music_path.as_str()) {
-                        let mut music = ffi::LoadMusicStream(c_path.as_ptr());
-                        music.looping = true;
-                        ffi::SetMusicVolume(music, 0.0); // Start at 0 for fade-in
-                        ffi::PlayMusicStream(music);
-                        data.current_music = Some(music);
-                        data.music_volume = 0.0;
-                        data.music_fade_timer = 0.0;
-                    }
-                }
-            }
+
+            data.play_stage_music(&self.stage.music_path);
+            // let music_path = resolve_asset_path("assets/SFX/BGM/TestStage/synesthesia.mp3");
+            // if Path::new(&music_path).exists() {
+            //     unsafe {
+            //         if let Ok(c_path) = CString::new(music_path.as_str()) {
+            //             let mut music = ffi::LoadMusicStream(c_path.as_ptr());
+            //             music.looping = true;
+            //             ffi::SetMusicVolume(music, 0.0); // Start at 0 for fade-in
+            //             ffi::PlayMusicStream(music);
+            //             data.current_music = Some(music);
+            //             data.music_volume = 0.0;
+            //             data.music_fade_timer = 0.0;
+            //         }
+            //     }
+            // }
         }
 
         // Initialize player position from map entities
@@ -1469,7 +1477,7 @@ impl Scene for MazeScene {
         // Check if player has died (HP <= 0)
         if !self.player_hp.is_alive() {
             use crate::menu_scene::LoseScene;
-            return SceneSwitch::Push(Box::new(LoseScene::new(self.map_path.clone())));
+            return SceneSwitch::Push(Box::new(LoseScene::new(self.stage.clone())));
         }
         
         // Check if player has reached the goal 
@@ -1719,7 +1727,7 @@ impl Scene for MazeScene {
         );
     }
 
-    fn on_exit(&mut self, rl: &mut RaylibHandle, data: &mut GameData) {
+    fn on_exit(&mut self, _rl: &mut RaylibHandle, _data: &mut GameData) {
         // Don't stop music when pausing (PauseScene will continue it)
         // Only stop if actually leaving the scene (e.g., going to menu)
     }

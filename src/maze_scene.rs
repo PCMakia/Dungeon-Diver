@@ -1,3 +1,7 @@
+//!
+//!  Maze_Scene is the main game implementation (will be broken down into sub files for readbility later)
+//! 
+
 use raylib::prelude::*;
 use raylib::ffi;
 use std::ffi::CString;

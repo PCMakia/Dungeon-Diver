@@ -74,8 +74,8 @@ pub struct MenuScene;
 
 impl Scene for MenuScene {
     fn on_enter(&mut self, _rl: &mut RaylibHandle, data: &mut GameData) {
-        // Stop any existing music (e.g., stage music from PauseScene)
-        data.stop_music();
+        // // Stop any existing music (e.g., stage music from PauseScene)
+        // data.stop_music();
         
         // Load and play Lobby music using FFI
         let music_path = resolve_asset_path("assets/SFX/BGM/Lobby/Opening.mp3");
@@ -98,15 +98,66 @@ impl Scene for MenuScene {
 
         if _rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
             let click = _rl.get_mouse_position();
-            let rectangle = Rectangle::new(200.0, 200.0, 150.0, 50.0);
+            let rectangle = Rectangle::new(250.0, 200.0, 150.0, 50.0);
             if  check_collision_point_rect(&click, &rectangle) {
-                println!("clicked on stage");
+                println!("clicked on stage I");
                 return SceneSwitch::Push(Box::new(MazeScene::from_map("assets/maps/mapTest.json".to_string())));
-
-
             }
         }
-        
+        // Desert
+        if _rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
+            let click = _rl.get_mouse_position();
+            let rectangle = Rectangle::new(450.0, 200.0, 150.0, 50.0);
+            if  check_collision_point_rect(&click, &rectangle) {
+                println!("clicked on stage II");
+                return SceneSwitch::Push(Box::new(MazeScene::from_map("assets/maps/mapDesert.json".to_string())));
+            }
+        }
+        // Jungle
+        if _rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
+            let click = _rl.get_mouse_position();
+            let rectangle = Rectangle::new(650.0, 200.0, 150.0, 50.0);
+            if  check_collision_point_rect(&click, &rectangle) {
+                println!("clicked on stage III");
+                return SceneSwitch::Push(Box::new(MazeScene::from_map("assets/maps/mapJungle.json".to_string())));
+            }
+        }
+        // Castle
+        if _rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
+            let click = _rl.get_mouse_position();
+            let rectangle = Rectangle::new(850.0, 200.0, 150.0, 50.0);
+            if  check_collision_point_rect(&click, &rectangle) {
+                println!("clicked on stage IV");
+                return SceneSwitch::Push(Box::new(MazeScene::from_map("assets/maps/mapCastle.json".to_string())));
+            }
+        }
+        // Ocean
+        if _rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
+            let click = _rl.get_mouse_position();
+            let rectangle = Rectangle::new(350.0, 300.0, 150.0, 50.0);
+            if  check_collision_point_rect(&click, &rectangle) {
+                println!("clicked on stage V");
+                return SceneSwitch::Push(Box::new(MazeScene::from_map("assets/maps/mapOcean.json".to_string())));
+            }   
+        }
+        // Hell
+        if _rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
+            let click = _rl.get_mouse_position();
+            let rectangle = Rectangle::new(550.0, 300.0, 150.0, 50.0);
+            if  check_collision_point_rect(&click, &rectangle) {
+                println!("clicked on stage VI");
+                return SceneSwitch::Push(Box::new(MazeScene::from_map("assets/maps/mapHell.json".to_string())));
+            }
+        }
+        // Flesh
+        if _rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
+            let click = _rl.get_mouse_position();
+            let rectangle = Rectangle::new(750.0, 300.0, 150.0, 50.0);
+            if  check_collision_point_rect(&click, &rectangle) {
+                println!("clicked on stage VII");
+                return SceneSwitch::Push(Box::new(MazeScene::from_map("assets/maps/mapFlesh.json".to_string())));
+            }
+        }
         SceneSwitch::None
     }
 
@@ -119,8 +170,90 @@ impl Scene for MenuScene {
     fn draw(&self, d: &mut RaylibDrawHandle, _data: &mut GameData) {
         d.clear_background(Color::WHITE);
         d.draw_text("Dungeon Stages", 450, 95, 50, Color::BLACK);
-        d.draw_rectangle(200, 200, 150, 50, Color::GREEN);
-        d.draw_text("Stage I", 235, 215, 20, Color::WHEAT);
+        // Button Colors
+        let button_rect_i = Rectangle::new(250.0, 200.0, 150.0, 50.0);
+        let button_color_i = if check_collision_point_rect(&d.get_mouse_position(), &button_rect_i) {
+            // Darken green on hover
+            Color { r: 0, g: 150, b: 0, a: 255 }
+        } else {
+            Color::GREEN
+        };
+
+        let button_rect_ii = Rectangle::new(450.0, 200.0, 150.0, 50.0);
+        let button_color_ii = if check_collision_point_rect(&d.get_mouse_position(), &button_rect_ii) {
+            // Darken green on hover
+            Color { r: 255, g: 187, b: 10, a: 255 }
+        } else {
+            Color::SANDYBROWN
+        };
+
+        let button_rect_iii = Rectangle::new(650.0, 200.0, 150.0, 50.0);
+        let button_color_iii = if check_collision_point_rect(&d.get_mouse_position(), &button_rect_iii) {
+            // Darken green on hover
+            Color { r: 0, g: 140, b: 0, a: 255 }
+        } else {
+            Color::DARKGREEN
+        };
+
+
+        let button_rect_iv = Rectangle::new(850.0, 200.0, 150.0, 50.0);
+        let button_color_iv = if check_collision_point_rect(&d.get_mouse_position(), &button_rect_iv) {
+            // Darken green on hover
+            Color { r: 100, g: 89, b: 79, a: 255 }
+        } else {
+            Color::DARKBROWN
+        };
+
+        let button_rect_v = Rectangle::new(350.0, 300.0, 150.0, 50.0);
+        let button_color_v = if check_collision_point_rect(&d.get_mouse_position(), &button_rect_v) {
+            // Darken green on hover
+            Color { r: 98, g: 127, b: 215, a: 255 }
+        } else {
+            Color::CORNFLOWERBLUE
+        };
+
+        let button_rect_vi = Rectangle::new(550.0, 300.0, 150.0, 50.0);
+        let button_color_vi = if check_collision_point_rect(&d.get_mouse_position(), &button_rect_vi) {
+            // Darken green on hover
+            Color { r: 150, g: 0, b: 0, a: 255 }
+        } else {
+            Color::MAROON
+        };
+
+        let button_rect_vii = Rectangle::new(750.0, 300.0, 150.0, 50.0);
+        let button_color_vii = if check_collision_point_rect(&d.get_mouse_position(), &button_rect_vii) {
+            // Darken green on hover
+            Color { r: 223, g: 223, b: 198, a: 255 }
+        } else {
+            Color::BEIGE
+        };
+        // stage I
+        d.draw_rectangle(250, 200, 150, 50, button_color_i);
+        d.draw_text("Stage I", 285, 215, 20, Color::WHEAT);
+
+        // Stage Desert
+        d.draw_rectangle(450, 200, 150, 50, button_color_ii);
+        d.draw_text("Stage II", 485, 215, 20, Color::BLACK);
+
+        // Stage Jungle
+        d.draw_rectangle(650, 200, 150, 50, button_color_iii);
+        d.draw_text("Stage III", 685, 215, 20, Color::CYAN);
+
+        // Stage Castle
+        d.draw_rectangle(850, 200, 150, 50, button_color_iv);
+        d.draw_text("Stage IV", 885, 215, 20, Color::WHITESMOKE);
+        
+        // Stage Ocean
+        d.draw_rectangle(350, 300, 150, 50, button_color_v);
+        d.draw_text("Stage V", 385, 315, 20, Color::WHEAT);
+
+        // Stage Hell
+        d.draw_rectangle(550, 300, 150, 50, button_color_vi);
+        d.draw_text("Stage VI", 585, 315, 20, Color::LIGHTGRAY);
+
+        // Special
+        d.draw_rectangle(750, 300, 150, 50, button_color_vii);
+        d.draw_text("Stage VII", 785, 315, 20, Color::RED);
     }
 
     fn on_exit(&mut self, _rl: &mut RaylibHandle, data: &mut GameData) {
@@ -177,15 +310,15 @@ impl Scene for WinScene {
             let button_rect = Rectangle::new(450.0, 550.0, 300.0, 60.0);
             if check_collision_point_rect(&click, &button_rect) {
                 println!("Back to menu clicked");
-                // Pop WinScene to return to MenuScene
-                return SceneSwitch::Pop;
+                // Replace WinScene to return to MenuScene
+                return SceneSwitch::Replace(Box::new(MenuScene));
             }
         }
         
         SceneSwitch::None
     }
 
-    fn update(&mut self, dt: f32, data: &mut GameData) -> SceneSwitch {
+    fn update(&mut self, _dt: f32, _data: &mut GameData) -> SceneSwitch {
         // Music transition handled in GameData::update_music_fade
         SceneSwitch::None
 

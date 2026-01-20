@@ -1,12 +1,44 @@
-
+//!
+//!  Author: Bao Le
+//!  Co-author: Khan
+//! 
+//! 
+//! 
+//!  
+//! 
 
 use raylib_framework_testing::game_data::GameData;
 use raylib_framework_testing::menu_scene::TitleScene;
 use raylib_framework_testing::scenes::SceneManager;
 
-use std::time::Instant;
+use std::{fs::OpenOptions, time::Instant};
 
+use std::sync::Arc;
+use tracing::{debug, info, warn};
+use tracing_subscriber::prelude::*;
 fn main() {
+    let stdout_log = tracing_subscriber::fmt::layer().pretty();
+
+    // tracing_subscriber::Registry::default()
+    // .with(stdout_log)
+    // .init();
+
+    info!("Application started");
+
+    let file = OpenOptions::new().append(true).create(true).open("debug.log");
+    let file = match file {
+        Ok(file) => file,
+        Err(error) => panic!("Error {:?}", error),
+    };
+
+    let debug_log = tracing_subscriber::fmt::layer().json().with_writer(Arc::new(file));
+
+    tracing_subscriber::Registry::default()
+        .with(stdout_log)
+        .with(debug_log)
+        .init();
+
+
     let width: i32 = 1280;
     let height: i32 = 960;
     let (mut rl, thread) = raylib::init()
@@ -27,7 +59,7 @@ fn main() {
     // scene manager
     let mut scene_manager = SceneManager::new(&mut rl, Box::new(TitleScene), &mut game_data);
 
-
+    info!("Game Scene started");
     // A variable for the time to calculate update steps in the game. Use for physics and animation.
     let mut last_time = Instant::now();
      

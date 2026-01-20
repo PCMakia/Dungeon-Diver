@@ -32,9 +32,9 @@ impl GameData {
         self.thread = Some(thread);
     }
 
-    /// add one to the player's total points.
-    pub fn score(&mut self) {
-        self.points += 1;
+    /// Add an arbitrary number of points to the player's score.
+    pub fn add_points(&mut self, amount: u32) {
+        self.points = self.points.saturating_add(amount);
     }
     
     /// Start timing a level

@@ -177,6 +177,16 @@ pub struct MazeScene {
     
     // Projectile system for shooting
     projectile_system: ProjectileSystem,
+
+    // Temporary death animations for defeated enemies
+    death_anims: Vec<DeathAnim>,
+}
+
+struct DeathAnim {
+    kind: String,
+    x: usize,
+    y: usize,
+    timer: f32,
 }
 
 
@@ -202,7 +212,7 @@ impl MazeScene {
             },
             fov_radius: 7, 
             tick_timer: 0.0,
-            tick_rate: 0.28, // increase for slower tick game
+            tick_rate: 0.22, // increase for slower tick game
             queued_move: None,
             last_gamepad_direction: None,
             player_sprite: None,
@@ -215,7 +225,7 @@ impl MazeScene {
             // Shooter: 4 frames idle:
             shooter_anim: AnimationState::with_sequence(vec![0, 1, 2, 3, 3, 2, 1, 0], 0.2),
             // Shooter: 7 frames death animation
-            shooter_death_anim: AnimationState::new(7, 0.15),
+            shooter_death_anim: AnimationState::with_sequence(vec![0, 1, 2, 3, 4, 5, 6], 0.15),
             
             // Initialize HP system
             player_hp: Health::new(10), 
@@ -226,6 +236,9 @@ impl MazeScene {
             
             // Initialize projectile system
             projectile_system: ProjectileSystem::new(),
+
+        
+            death_anims: Vec::new(),
         }
     }
 
@@ -418,13 +431,18 @@ impl MazeScene {
     }
     
     /// Update projectiles and check for collisions
-    fn update_projectiles(&mut self, dt: f32) {
+    /// `data` is used to award points when enemies are defeated.
+    fn update_projectiles(&mut self, dt: f32, data: &mut GameData) {
         // Update all projectiles
         self.projectile_system.update(dt);
         
         // Check for collisions with walls and enemies
         let projectiles = &mut self.projectile_system.projectiles;
         let mut projectiles_to_remove = Vec::new();
+        
+
+        use std::collections::HashSet;
+        let mut enemies_with_death_anim = HashSet::new();
         
         for (i, projectile) in projectiles.iter().enumerate() {
             // Get tile position of projectile
@@ -448,7 +466,6 @@ impl MazeScene {
                 let projectile_rect = projectile.get_collision_rect();
                 
                 for (j, entity) in self.entity_states.iter_mut().enumerate() {
-                    // Skip dead entities
                     if !entity.hp.is_alive() {
                         continue;
                     }
@@ -474,9 +491,28 @@ impl MazeScene {
                         // Mark projectile for removal
                         projectiles_to_remove.push(i);
                         
-                        // If enemy died, add points
+                        // If enemy died, add points and spawn death animation
+                        // Use entity index to uniquely identify each enemy
                         if enemy_died {
-                            // TODO: Add points or other effects when enemy dies
+                            // Use entity index as unique identifier (not position, since multiple can share position)
+                            if !enemies_with_death_anim.contains(&j) {
+                                enemies_with_death_anim.insert(j);
+                                
+                                // Award different points per enemy type
+                                match entity.kind.as_str() {
+                                    "tank" => data.add_points(100),
+                                    "shooter" => data.add_points(50),
+                                    _ => {}
+                                }
+
+                                // Spawn a transient death animation at this tile
+                                self.death_anims.push(DeathAnim {
+                                    kind: entity.kind.clone(),
+                                    x: entity.x,
+                                    y: entity.y,
+                                    timer: 0.0,
+                                });
+                            }
                         }
                         
                         break;
@@ -573,6 +609,21 @@ impl Scene for MazeScene {
                         panic!("Failed to load shooter sprite: {:?}", e);
                     })
             );
+            
+            // Load projectile textures
+            let arrow_path = resolve_asset_path("assets/textures/Arrow.png");
+            let arrow_texture = rl.load_texture(thread, &arrow_path)
+                .unwrap_or_else(|e| {
+                    panic!("Failed to load arrow texture: {:?}", e);
+                });
+            self.projectile_system.set_arrow_texture(arrow_texture);
+            
+            let mage_bullet_path = resolve_asset_path("assets/textures/mage-bullet-13x13.png");
+            let mage_bullet_texture = rl.load_texture(thread, &mage_bullet_path)
+                .unwrap_or_else(|e| {
+                    panic!("Failed to load mage bullet texture: {:?}", e);
+                });
+            self.projectile_system.set_mage_bullet_texture(mage_bullet_texture);
         }
 
         // Initialize player position from map entities
@@ -607,10 +658,31 @@ impl Scene for MazeScene {
         self.player_stun_ticks = 0;
         
         // Convert map entities to entity states with HP
+        //
+        // IMPORTANT: `assets/maps/mapTest.json` currently contains many duplicate enemy entries
+        // at the same (x,y) positions (stacked enemies). That makes it look like a single enemy
+        // that takes many more hits to kill, because we're actually killing multiple enemies
+        // on the same tile. (problem of MapMaker_v3)
+        //
+        // To match the intended behavior (1 enemy per tile), dedupe enemies by tile here.
         self.entity_states.clear();
+        use std::collections::{HashMap, HashSet};
+        let mut position_counts: HashMap<(usize, usize), usize> = HashMap::new();
+        let mut seen_enemy_tiles: HashSet<(usize, usize)> = HashSet::new();
+        
         for e in &self.map.entities {
             // Only create entity states for enemies (tank, shooter)
             if e.kind == "tank" || e.kind == "shooter" {
+                // Track how many entities are on each tile (for diagnostics)
+                let pos = (e.x, e.y);
+                *position_counts.entry(pos).or_insert(0) += 1;
+
+                // Dedupe: keep only the first enemy encountered per tile
+                if !seen_enemy_tiles.insert(pos) {
+                    // Duplicate enemy on same tile; skip spawning it.
+                    continue;
+                }
+                
                 let max_hp = self.entity_stats.get_max_hp(&e.kind);
                 self.entity_states.push(EntityState::new(
                     e.kind.clone(),
@@ -618,6 +690,16 @@ impl Scene for MazeScene {
                     e.y,
                     max_hp
                 ));
+            }
+        }
+        
+        // Warn about multiple enemies on the same tile in the map file
+        for ((x, y), count) in &position_counts {
+            if *count > 1 {
+                eprintln!(
+                    "WARNING: map has {} enemies on tile ({}, {}). Only 1 will be spawned due to dedupe.",
+                    count, x, y
+                );
             }
         }
         
@@ -776,7 +858,23 @@ impl Scene for MazeScene {
         }
         
         // Update projectiles every frame (not tick-based for smooth movement)
-        self.update_projectiles(dt);
+        self.update_projectiles(dt, data);
+
+        // Update active death animations (timers only)
+        for anim in &mut self.death_anims {
+            anim.timer += dt;
+        }
+
+        // Remove finished death animations based on per-enemy duration
+        self.death_anims.retain(|anim| {
+            match anim.kind.as_str() {
+                // Shooter: 7-frame sequence at ~0.1s per frame ≈ 0.7s total
+                "shooter" => anim.timer < 0.7,
+                // Tank: ping-pong 3-frame sequence, let it play for a bit longer
+                "tank" => anim.timer < 0.8,
+                _ => anim.timer < 0.5,
+            }
+        });
         
         // Tick-based game logic
         self.tick_timer += dt;
@@ -791,8 +889,8 @@ impl Scene for MazeScene {
             // Update enemy AI
             self.update_enemies();
             
-            // Remove dead entities
-            self.entity_states.retain(|e| e.hp.is_alive() || e.kind == "goal");
+            // Remove dead entities (goals are kept separately in map.entities)
+            self.entity_states.retain(|e| e.hp.is_alive());
         }
         
         // Check if player has died (HP <= 0)
@@ -804,8 +902,6 @@ impl Scene for MazeScene {
         // Check if player has reached the goal 
         for e in &self.map.entities {
             if e.kind == "goal" && e.x == self.player_x && e.y == self.player_y {
-                // Add points for completing the maze
-                data.score();
                 // Record completion time
                 data.complete_level();
                 return SceneSwitch::Replace(Box::new(WinScene));
@@ -815,7 +911,7 @@ impl Scene for MazeScene {
         SceneSwitch::None
     }
 
-    
+
 
     fn draw(&self, d: &mut RaylibDrawHandle, data: &mut GameData) {
         d.clear_background(Color::BLACK);
@@ -883,12 +979,8 @@ impl Scene for MazeScene {
                 "tank" => {
                     if let Some(ref sprite) = self.tank_sprite {
                         // Tank: Top row (3 frames) = East movement
-                        //       Row 1 frame 0 = facing West (left)
-                        //       Row 1 frames 1-2 = South movement
-                        // For now, use East animation (top row, 3 frames)
-                        // TODO: Add direction tracking for tank to use correct row/frame
                         let frame_x = self.tank_anim.get_frame_index().min(2); // Clamp to 3 frames
-                        let frame_y = 0; // Top row for East
+                        let frame_y = 0; // Top row for starting
                         self.draw_animated_sprite(
                             &mut d2d,
                             sprite,
@@ -906,8 +998,6 @@ impl Scene for MazeScene {
                 "shooter" => {
                     if let Some(ref sprite) = self.shooter_sprite {
                         // Shooter: First row (4 frames) = idle animation
-                        //          Remaining rows = death animation (7 frames starting at row 1, col 0)
-                        // Use idle animation with custom sequence [0,1,2,3,2,1,0]
                         let frame_x = self.shooter_anim.get_frame_index();
                         let frame_y = 0; // First row for idle
                         self.draw_animated_sprite(
@@ -921,6 +1011,81 @@ impl Scene for MazeScene {
                             e.y,
                             45, // sprite width
                             51, // sprite height
+                        );
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        // Draw death animations for defeated enemies
+        for anim in &self.death_anims {
+            // FOV culling for death animations as well
+            if !self.in_fov(anim.x, anim.y) {
+                continue;
+            }
+
+            match anim.kind.as_str() {
+                "shooter" => {
+                    if let Some(ref sprite) = self.shooter_sprite {
+                        let frame_duration = 0.1;
+                        let mut frame = (anim.timer / frame_duration).floor() as usize;
+                        if frame > 6 {
+                            frame = 6;
+                        }
+
+                        let (frame_x, frame_y) = if frame < 4 {
+                            (frame, 1)
+                        } else {
+                            (frame - 4, 2)
+                        };
+
+                        self.draw_animated_sprite(
+                            &mut d2d,
+                            sprite,
+                            frame_x,
+                            frame_y,
+                            45, // frame width
+                            51, // frame height
+                            anim.x,
+                            anim.y,
+                            45, // sprite width
+                            51, // sprite height
+                        );
+                    }
+                }
+                "tank" => {
+                    if let Some(ref sprite) = self.tank_sprite {
+                        let frames: &[(usize, usize)] = &[
+                            (2, 0), 
+                            (1, 1), 
+                            (0, 1), 
+                        ];
+
+                        
+                        let seq: &[(usize, usize)] = &[
+                            (2, 0), 
+                            (1, 1), 
+                            (0, 1), 
+                            (1, 1), 
+                        ];
+
+                        let frame_duration = 0.1;
+                        let frame_count = (anim.timer / frame_duration).floor() as usize;
+                        let idx = (frame_count % seq.len()).min(seq.len() - 1);
+                        let (frame_x, frame_y) = seq[idx];
+
+                        self.draw_animated_sprite(
+                            &mut d2d,
+                            sprite,
+                            frame_x,
+                            frame_y,
+                            45, // frame width
+                            66, // frame height
+                            anim.x,
+                            anim.y,
+                            45, // sprite width
+                            66, // sprite height
                         );
                     }
                 }
@@ -961,21 +1126,8 @@ impl Scene for MazeScene {
             );
         }
         
-        // Draw projectiles
-        for projectile in &self.projectile_system.projectiles {
-            let color = if projectile.is_player_projectile {
-                Color::BLUE
-            } else {
-                Color::RED
-            };
-            
-            d2d.draw_circle(
-                projectile.x as i32,
-                projectile.y as i32,
-                4.0,
-                color,
-            );
-        }
+        self.projectile_system
+            .draw(&mut d2d, self.tile_size, min_x, max_x, min_y, max_y);
         
         // End 2D camera mode
         drop(d2d);

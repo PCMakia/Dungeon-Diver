@@ -22,8 +22,6 @@ fn main() {
     // scene manager
     let mut scene_manager = SceneManager::new(&mut rl, Box::new(TitleScene), &mut game_data);
 
-    // store scenes in a Vec. Box<dyn Scene> means a pointer to any type that implements the Scene trait.
-    // let mut scenes: Vec<Box<dyn Scene>> = vec![Box::new(MenuScene)];
 
     // A variable for the time to calculate update steps in the game. Use for physics and animation.
     let mut last_time = Instant::now();

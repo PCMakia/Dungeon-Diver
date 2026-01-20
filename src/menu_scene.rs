@@ -253,16 +253,21 @@ impl Scene for LoseScene {
     
     fn on_enter(&mut self, _rl: &mut RaylibHandle, _data: &mut GameData) {}
 
-    fn handle_input(&mut self, _rl: &mut RaylibHandle, _data: &mut GameData) -> SceneSwitch {
+    fn handle_input(&mut self, _rl: &mut RaylibHandle, data: &mut GameData) -> SceneSwitch {
         if _rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
             let click = _rl.get_mouse_position();
             
             // Calculate button positions to match draw() coordinates
-            let box_x = (_data.screen_width - 500) / 2;
-            let box_y = (_data.screen_height - 400) / 2;
+            let box_x = (data.screen_width - 500) / 2;
+            let box_y = (data.screen_height - 400) / 2;
             
             let retry_rect = Rectangle::new((box_x + 50) as f32, (box_y + 200) as f32, 400.0, 60.0);
             if check_collision_point_rect(&click, &retry_rect) {
+                // Reset score and timer for retry
+                data.points = 0;
+                data.level_start_time = None;
+                data.level_completion_time = None;
+                
                 use crate::maze_scene::MazeScene;
                 return SceneSwitch::PopAndReplace(Box::new(MazeScene::from_map(self.map_path.clone())));
             }

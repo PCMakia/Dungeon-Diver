@@ -4,6 +4,7 @@
 //! We could also store the player's gamepad_id here.
 
 use raylib::prelude::*;
+use raylib::ffi;
 use std::time::Instant;
 
 pub struct GameData {
@@ -14,6 +15,14 @@ pub struct GameData {
     // Timing for level completion
     pub level_start_time: Option<Instant>,
     pub level_completion_time: Option<Instant>,
+    // Music state - using FFI Music directly
+    pub current_music: Option<ffi::Music>,
+    pub music_volume: f32,
+    pub music_fade_timer: f32,
+    pub music_fade_duration: f32,
+    // For WinScene: track if we're playing full or loop version
+    pub win_music_full_played: bool,
+    pub win_music_loop: Option<ffi::Music>,
 }
 
 impl GameData {
@@ -25,6 +34,12 @@ impl GameData {
             thread: None,
             level_start_time: None,
             level_completion_time: None,
+            current_music: None,
+            music_volume: 0.0,
+            music_fade_timer: 0.0,
+            music_fade_duration: 1.0, // 1 second fade-in
+            win_music_full_played: false,
+            win_music_loop: None,
         }
     }
     
@@ -54,6 +69,85 @@ impl GameData {
             Some((completion - start).as_secs_f32())
         } else {
             None
+        }
+    }
+    
+    /// Stop current music and clean up
+    pub fn stop_music(&mut self) {
+        unsafe {
+            if let Some(music) = self.current_music.take() {
+                ffi::StopMusicStream(music);
+                ffi::UnloadMusicStream(music);
+            }
+            if let Some(loop_music) = self.win_music_loop.take() {
+                ffi::StopMusicStream(loop_music);
+                ffi::UnloadMusicStream(loop_music);
+            }
+        }
+        self.music_volume = 0.0;
+        self.music_fade_timer = 0.0;
+        self.win_music_full_played = false;
+    }
+    
+    /// Update music volume fade-in
+    pub fn update_music_fade(&mut self, dt: f32) {
+        unsafe {
+            // Update fade-in timer
+            if self.music_fade_timer < self.music_fade_duration {
+                self.music_fade_timer += dt;
+                self.music_volume = (self.music_fade_timer / self.music_fade_duration).min(1.0);
+            } else {
+                self.music_volume = 1.0;
+            }
+            
+            // Handle win scene transition from full to loop
+            if let Some(mut music) = self.current_music.take() {
+                if !self.win_music_full_played {
+                    // Check if full version finished
+                    if !ffi::IsMusicStreamPlaying(music) {
+                        // Full version finished, switch to loop
+                        if let Some(mut loop_music) = self.win_music_loop.take() {
+                            ffi::StopMusicStream(music);
+                            ffi::UnloadMusicStream(music);
+                            loop_music.looping = true;
+                            ffi::SetMusicVolume(loop_music, self.music_volume);
+                            ffi::PlayMusicStream(loop_music);
+                            self.current_music = Some(loop_music);
+                            self.win_music_full_played = true;
+                        } else {
+                            // No loop music, put music back
+                            self.current_music = Some(music);
+                        }
+                    } else {
+                        // Update volume and stream for full version
+                        ffi::SetMusicVolume(music, self.music_volume);
+                        ffi::UpdateMusicStream(music);
+                        self.current_music = Some(music);
+                    }
+                } else {
+                    // Normal music or win loop - update volume and stream
+                    ffi::SetMusicVolume(music, self.music_volume);
+                    ffi::UpdateMusicStream(music);
+                    
+                    // Loop normal music (except WinScene)
+                    if !music.looping && !ffi::IsMusicStreamPlaying(music) && self.win_music_loop.is_none() {
+                        ffi::PlayMusicStream(music);
+                    }
+                    self.current_music = Some(music);
+                }
+            }
+            
+            // Update win loop music if it's still separate (shouldn't happen, but safety check)
+            if let Some(mut loop_music) = self.win_music_loop.take() {
+                ffi::SetMusicVolume(loop_music, self.music_volume);
+                ffi::UpdateMusicStream(loop_music);
+                
+                // Loop the win loop music
+                if !ffi::IsMusicStreamPlaying(loop_music) {
+                    ffi::PlayMusicStream(loop_music);
+                }
+                self.win_music_loop = Some(loop_music);
+            }
         }
     }
 }

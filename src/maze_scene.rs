@@ -1,4 +1,6 @@
 use raylib::prelude::*;
+use raylib::ffi;
+use std::ffi::CString;
 
 use crate::menu_scene::WinScene;
 use crate::scenes::{Scene, SceneSwitch};
@@ -1177,6 +1179,22 @@ impl Scene for MazeScene {
                     panic!("Failed to load mage bullet texture: {:?}", e);
                 });
             self.projectile_system.set_mage_bullet_texture(mage_bullet_texture);
+            
+            // Load and play TestStage music using FFI
+            let music_path = resolve_asset_path("assets/SFX/BGM/TestStage/synesthesia.mp3");
+            if Path::new(&music_path).exists() {
+                unsafe {
+                    if let Ok(c_path) = CString::new(music_path.as_str()) {
+                        let mut music = ffi::LoadMusicStream(c_path.as_ptr());
+                        music.looping = true;
+                        ffi::SetMusicVolume(music, 0.0); // Start at 0 for fade-in
+                        ffi::PlayMusicStream(music);
+                        data.current_music = Some(music);
+                        data.music_volume = 0.0;
+                        data.music_fade_timer = 0.0;
+                    }
+                }
+            }
         }
 
         // Initialize player position from map entities
@@ -1699,6 +1717,9 @@ impl Scene for MazeScene {
         );
     }
 
-    fn on_exit(&mut self, _rl: &mut RaylibHandle, _data: &mut GameData) {}
+    fn on_exit(&mut self, rl: &mut RaylibHandle, data: &mut GameData) {
+        // Don't stop music when pausing (PauseScene will continue it)
+        // Only stop if actually leaving the scene (e.g., going to menu)
+    }
 }
 

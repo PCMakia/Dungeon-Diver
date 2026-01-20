@@ -1,6 +1,7 @@
 //! Raylib helper functions
 use raylib::prelude::*;
 use rand::Rng;
+use std::path::Path;
 
 pub fn check_collision_point_rect(point: &Vector2, rect: &Rectangle) -> bool {
     let in_x = point.x >= rect.x && point.x <= rect.x + rect.width;
@@ -16,5 +17,23 @@ pub fn random_point(width: i32, height: i32) -> Vector2 {
     let y = rng.random_range(0..height);
 
     Vector2{x: x as f32, y: y as f32}
+}
+
+/// Resolve asset path by trying multiple relative path options
+pub fn resolve_asset_path(path: &str) -> String {
+    let paths_to_try = vec![
+        path.to_string(),
+        format!("../{}", path),
+        format!("../../{}", path),
+    ];
+    
+    for try_path in &paths_to_try {
+        if Path::new(try_path).exists() {
+            return try_path.clone();
+        }
+    }
+    
+    // If none found, return original path
+    path.to_string()
 }
 

@@ -17,7 +17,12 @@ fn main() {
 
     // create the game data. This prepresents data associated with the human player.
     let mut game_data = GameData::new(width, height);
-    game_data.set_thread(thread); 
+    game_data.set_thread(thread);
+    
+    // Initialize audio device for music (required before loading music)
+    unsafe {
+        raylib::ffi::InitAudioDevice();
+    } 
 
     // scene manager
     let mut scene_manager = SceneManager::new(&mut rl, Box::new(TitleScene), &mut game_data);

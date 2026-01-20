@@ -69,6 +69,9 @@ impl SceneManager {
 
 
     pub fn update(&mut self, rl: &mut RaylibHandle, dt: f32, data: &mut GameData) {
+        // Update music fade-in and streaming
+        data.update_music_fade(dt);
+        
         if let Some(scene) = self.scenes.last_mut() {
             let switch = scene.handle_input(rl, data);
             self.apply_switch(switch, rl, data);

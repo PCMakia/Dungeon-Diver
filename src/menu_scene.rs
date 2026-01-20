@@ -8,13 +8,35 @@ use crate::game_data::GameData;
 use crate::maze_scene::MazeScene;
 use crate::scenes::{Scene,SceneSwitch}; 
 use crate::utils::*;
+use std::path::Path;
+use raylib::ffi;
+use std::ffi::CString;
 
 /// A start screen or menu screen scene
 /// A start screen or menu screen scene
 pub struct TitleScene;
 
 impl Scene for TitleScene {
-    fn on_enter(&mut self, _rl: &mut RaylibHandle, _data: &mut GameData) {}
+    fn on_enter(&mut self, _rl: &mut RaylibHandle, data: &mut GameData) {
+        // Stop any existing music
+        data.stop_music();
+        
+        // Load and play Lobby music using FFI
+        let music_path = resolve_asset_path("assets/SFX/BGM/Lobby/Opening.mp3");
+        if Path::new(&music_path).exists() {
+            unsafe {
+                if let Ok(c_path) = CString::new(music_path.as_str()) {
+                    let mut music = ffi::LoadMusicStream(c_path.as_ptr());
+                    music.looping = true;
+                    ffi::SetMusicVolume(music, 0.0); // Start at 0 for fade-in
+                    ffi::PlayMusicStream(music);
+                    data.current_music = Some(music);
+                    data.music_volume = 0.0;
+                    data.music_fade_timer = 0.0;
+                }
+            }
+        }
+    }
 
     fn handle_input(&mut self, _rl: &mut RaylibHandle, _data: &mut GameData) -> SceneSwitch {
         if _rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
@@ -29,7 +51,8 @@ impl Scene for TitleScene {
         SceneSwitch::None
     }
 
-    fn update(&mut self, _dt: f32, _data: &mut GameData) -> SceneSwitch {
+    fn update(&mut self, dt: f32, data: &mut GameData) -> SceneSwitch {
+        // Music fade-in is handled in SceneManager
         SceneSwitch::None
     }
 
@@ -50,7 +73,26 @@ impl Scene for TitleScene {
 pub struct MenuScene;
 
 impl Scene for MenuScene {
-    fn on_enter(&mut self, _rl: &mut RaylibHandle, _data: &mut GameData) {}
+    fn on_enter(&mut self, _rl: &mut RaylibHandle, data: &mut GameData) {
+        // Stop any existing music (e.g., stage music from PauseScene)
+        data.stop_music();
+        
+        // Load and play Lobby music using FFI
+        let music_path = resolve_asset_path("assets/SFX/BGM/Lobby/Opening.mp3");
+        if Path::new(&music_path).exists() {
+            unsafe {
+                if let Ok(c_path) = CString::new(music_path.as_str()) {
+                    let mut music = ffi::LoadMusicStream(c_path.as_ptr());
+                    music.looping = true;
+                    ffi::SetMusicVolume(music, 0.0); // Start at 0 for fade-in
+                    ffi::PlayMusicStream(music);
+                    data.current_music = Some(music);
+                    data.music_volume = 0.0;
+                    data.music_fade_timer = 0.0;
+                }
+            }
+        }
+    }
 
     fn handle_input(&mut self, _rl: &mut RaylibHandle, _data: &mut GameData) -> SceneSwitch {
 
@@ -68,7 +110,8 @@ impl Scene for MenuScene {
         SceneSwitch::None
     }
 
-    fn update(&mut self, _dt: f32, _data: &mut GameData) -> SceneSwitch {
+    fn update(&mut self, dt: f32, data: &mut GameData) -> SceneSwitch {
+        // Music fade-in is handled in SceneManager
         SceneSwitch::None
 
     }
@@ -80,7 +123,10 @@ impl Scene for MenuScene {
         d.draw_text("Stage I", 235, 215, 20, Color::WHEAT);
     }
 
-    fn on_exit(&mut self, _rl: &mut RaylibHandle, _data: &mut GameData) {}
+    fn on_exit(&mut self, _rl: &mut RaylibHandle, data: &mut GameData) {
+        // Stop music when leaving menu (going to game)
+        data.stop_music();
+    }
 }
 
 
@@ -88,7 +134,39 @@ impl Scene for MenuScene {
 pub struct WinScene;
 
 impl Scene for WinScene {
-    fn on_enter(&mut self, _rl: &mut RaylibHandle, _data: &mut GameData) {}
+    fn on_enter(&mut self, _rl: &mut RaylibHandle, data: &mut GameData) {
+        // Stop current music
+        data.stop_music();
+        
+        // Load and play Winner Full version first using FFI
+        let full_path = resolve_asset_path("assets/SFX/BGM/Winner/Continue Theme (Full).wav");
+        let loop_path = resolve_asset_path("assets/SFX/BGM/Winner/Continue Theme (Loop).wav");
+        
+            unsafe {
+                if Path::new(&full_path).exists() {
+                    if let Ok(c_path) = CString::new(full_path.as_str()) {
+                        let mut music = ffi::LoadMusicStream(c_path.as_ptr());
+                        music.looping = false; // Don't loop the full version
+                        ffi::SetMusicVolume(music, 1.0); // Start at full volume (no fade-in for win)
+                        ffi::PlayMusicStream(music);
+                        data.current_music = Some(music);
+                        data.music_volume = 1.0;
+                        data.music_fade_timer = data.music_fade_duration; // Skip fade-in
+                        data.win_music_full_played = false;
+                    }
+                }
+                
+                // Pre-load the loop version
+                if Path::new(&loop_path).exists() {
+                    if let Ok(c_path) = CString::new(loop_path.as_str()) {
+                        let mut loop_music = ffi::LoadMusicStream(c_path.as_ptr());
+                        loop_music.looping = true;
+                        ffi::SetMusicVolume(loop_music, 1.0);
+                        data.win_music_loop = Some(loop_music);
+                    }
+                }
+            }
+    }
 
     fn handle_input(&mut self, _rl: &mut RaylibHandle, _data: &mut GameData) -> SceneSwitch {
 
@@ -107,7 +185,8 @@ impl Scene for WinScene {
         SceneSwitch::None
     }
 
-    fn update(&mut self, _dt: f32, _data: &mut GameData) -> SceneSwitch {
+    fn update(&mut self, dt: f32, data: &mut GameData) -> SceneSwitch {
+        // Music transition handled in GameData::update_music_fade
         SceneSwitch::None
 
     }
@@ -145,7 +224,10 @@ impl Scene for WinScene {
         d.draw_text("Back to Menu", 515, 570, 25, Color::WHITE);
     }
 
-    fn on_exit(&mut self, _rl: &mut RaylibHandle, _data: &mut GameData) {}
+    fn on_exit(&mut self, _rl: &mut RaylibHandle, data: &mut GameData) {
+        // Stop win music when leaving
+        data.stop_music();
+    }
 }      
 
 

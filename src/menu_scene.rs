@@ -3,8 +3,7 @@
 //! 
 use raylib::prelude::*;
 // use rand::{self, Rng};
-
-use crate::game_data::GameData;
+use crate::game_data::{GameData, StageConfig};
 use crate::maze_scene::MazeScene;
 use crate::scenes::{Scene,SceneSwitch}; 
 use crate::utils::*;
@@ -51,7 +50,7 @@ impl Scene for TitleScene {
         SceneSwitch::None
     }
 
-    fn update(&mut self, dt: f32, data: &mut GameData) -> SceneSwitch {
+    fn update(&mut self, _dt: f32, _data: &mut GameData) -> SceneSwitch {
         // Music fade-in is handled in SceneManager
         SceneSwitch::None
     }
@@ -101,8 +100,14 @@ impl Scene for MenuScene {
             let rectangle = Rectangle::new(250.0, 200.0, 150.0, 50.0);
             if  check_collision_point_rect(&click, &rectangle) {
                 println!("clicked on stage I");
-                data.start_level(0);
-                return SceneSwitch::Push(Box::new(MazeScene::from_map("assets/maps/mapTest.json".to_string())));
+
+                let stage = StageConfig {
+                    id: 0,
+                    map_path: "assets/maps/mapTest.json".to_string(),
+                    music_path: "assets/SFX/BGM/TestStage/synesthesia.mp3".to_string(),
+                };
+                data.start_level(stage.id);
+                return SceneSwitch::Replace(Box::new(MazeScene::from_map(stage)));
             }
         }
         // Desert
@@ -111,8 +116,13 @@ impl Scene for MenuScene {
             let rectangle = Rectangle::new(450.0, 200.0, 150.0, 50.0);
             if  check_collision_point_rect(&click, &rectangle) {
                 println!("clicked on stage II");
-                data.start_level(1);
-                return SceneSwitch::Push(Box::new(MazeScene::from_map("assets/maps/mapDesert.json".to_string())));
+                let stage = StageConfig {
+                    id: 1,
+                    map_path: "assets/maps/mapDesert.json".to_string(),
+                    music_path: "assets/SFX/BGM/DesertStage/heavens_forbid.ogg".to_string(),
+                };
+                data.start_level(stage.id);
+                return SceneSwitch::Replace(Box::new(MazeScene::from_map(stage)));
             }
         }
         // Jungle
@@ -121,8 +131,13 @@ impl Scene for MenuScene {
             let rectangle = Rectangle::new(650.0, 200.0, 150.0, 50.0);
             if  check_collision_point_rect(&click, &rectangle) {
                 println!("clicked on stage III");
-                data.start_level(2);
-                return SceneSwitch::Push(Box::new(MazeScene::from_map("assets/maps/mapJungle.json".to_string())));
+                let stage = StageConfig {
+                    id: 2,
+                    map_path: "assets/maps/mapJungle.json".to_string(),
+                    music_path: "assets/SFX/BGM/JungleStage/Kokopelli's Labyrinth Theme ~ Full.ogg".to_string(),
+                };
+                data.start_level(stage.id);
+                return SceneSwitch::Replace(Box::new(MazeScene::from_map(stage)));
             }
         }
         // Castle
@@ -131,8 +146,13 @@ impl Scene for MenuScene {
             let rectangle = Rectangle::new(850.0, 200.0, 150.0, 50.0);
             if  check_collision_point_rect(&click, &rectangle) {
                 println!("clicked on stage IV");
-                data.start_level(3);
-                return SceneSwitch::Push(Box::new(MazeScene::from_map("assets/maps/mapCastle.json".to_string())));
+                let stage = StageConfig {
+                    id: 3,
+                    map_path: "assets/maps/mapCastle.json".to_string(),
+                    music_path: "assets/SFX/BGM/CastleStage/sinister_abode.wav".to_string(),
+                };
+                data.start_level(stage.id);
+                return SceneSwitch::Replace(Box::new(MazeScene::from_map(stage)));
             }
         }
         // Ocean
@@ -141,8 +161,14 @@ impl Scene for MenuScene {
             let rectangle = Rectangle::new(350.0, 300.0, 150.0, 50.0);
             if  check_collision_point_rect(&click, &rectangle) {
                 println!("clicked on stage V");
-                data.start_level(4);
-                return SceneSwitch::Push(Box::new(MazeScene::from_map("assets/maps/mapOcean.json".to_string())));
+
+                let stage = StageConfig {
+                    id: 4,
+                    map_path: "assets/maps/mapOcean.json".to_string(),
+                    music_path: "assets/SFX/BGM/OceanStage/song18.mp3".to_string(),
+                };
+                data.start_level(stage.id);
+                return SceneSwitch::Replace(Box::new(MazeScene::from_map(stage)));
             }   
         }
         // Hell
@@ -151,8 +177,13 @@ impl Scene for MenuScene {
             let rectangle = Rectangle::new(550.0, 300.0, 150.0, 50.0);
             if  check_collision_point_rect(&click, &rectangle) {
                 println!("clicked on stage VI");
-                data.start_level(5);
-                return SceneSwitch::Push(Box::new(MazeScene::from_map("assets/maps/mapHell.json".to_string())));
+                let stage = StageConfig {
+                    id: 5,
+                    map_path: "assets/maps/mapHell.json".to_string(),
+                    music_path: "assets/SFX/BGM/HellStage/dark chamber piano.mp3".to_string(),
+                };
+                data.start_level(stage.id);
+                return SceneSwitch::Replace(Box::new(MazeScene::from_map(stage)));
             }
         }
         // Flesh
@@ -161,14 +192,20 @@ impl Scene for MenuScene {
             let rectangle = Rectangle::new(750.0, 300.0, 150.0, 50.0);
             if  check_collision_point_rect(&click, &rectangle) {
                 println!("clicked on stage VII");
-                data.start_level(6);
-                return SceneSwitch::Push(Box::new(MazeScene::from_map("assets/maps/mapFlesh.json".to_string())));
+                
+                let stage = StageConfig {
+                    id: 6,
+                    map_path: "assets/maps/mapFlesh.json".to_string(),
+                    music_path: "assets/SFX/BGM/FleshStage(Special)/Ruined City Theme.mp3".to_string(),
+                };
+                data.start_level(stage.id);
+                return SceneSwitch::Replace(Box::new(MazeScene::from_map(stage)));
             }
         }
         SceneSwitch::None
     }
 
-    fn update(&mut self, dt: f32, data: &mut GameData) -> SceneSwitch {
+    fn update(&mut self, _dt: f32, _data: &mut GameData) -> SceneSwitch {
         // Music fade-in is handled in SceneManager
         SceneSwitch::None
 
@@ -473,12 +510,12 @@ impl Scene for PauseScene {
 }      
 
 pub struct LoseScene {
-    map_path: String, // Store the map path to restart the level
+    stage: StageConfig,
 }
 
 impl LoseScene {
-    pub fn new(map_path: String) -> Self {
-        Self { map_path }
+    pub fn new(stage: StageConfig) -> Self {
+        Self { stage }
     }
 }
 
@@ -505,7 +542,7 @@ impl Scene for LoseScene {
                 data.level_completion_time = None;
                 
                 use crate::maze_scene::MazeScene;
-                return SceneSwitch::PopAndReplace(Box::new(MazeScene::from_map(self.map_path.clone())));
+                return SceneSwitch::PopAndReplace(Box::new(MazeScene::from_map(self.stage.clone())));
             }
             
             // Back to Menu button - replace lose scene with menu scene

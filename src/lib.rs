@@ -12,14 +12,14 @@ pub mod projectile;
 pub fn is_floor_tile(tile_id: i32) -> bool {
     matches!(
         tile_id,
-        4..=81 | 191..=218
+        4..=81 | 151 | 191..=218
     )
 }
 
 pub fn is_wall_tile(tile_id: i32) -> bool {
     matches!(
         tile_id,
-        88..=190
+        88..=150 | 152..=190
     )
 }
 

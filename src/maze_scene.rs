@@ -5,7 +5,7 @@
 use raylib::prelude::*;
 use raylib::ffi;
 use crate::maze_scene::ffi::PlaySound;
-use crate::utils::agent_log;
+
 
 use crate::menu_scene::WinScene;
 use crate::scenes::{Scene, SceneSwitch};
@@ -1040,16 +1040,6 @@ impl MazeScene {
                         // Deal damage to enemy
                         let enemy_died = entity.hp.take_damage(projectile.damage);
                         
-                        agent_log(
-                            "H2",
-                            "maze_scene.rs:projectile_hit_enemy",
-                            "about to PlaySound(player_hit_sfx)",
-                            &format!(
-                                "{{\"has\":{},\"frameCount\":{}}}",
-                                data.player_hit_sfx.is_some(),
-                                data.player_hit_sfx.map(|s| s.frameCount).unwrap_or(0)
-                            ),
-                        );
                         unsafe { PlaySound(data.player_hit_sfx.unwrap()) };
                         // Mark projectile for removal
                         projectiles_to_remove.push(i);
@@ -1065,31 +1055,11 @@ impl MazeScene {
                                 match entity.kind.as_str() {
                                     "tank" => {
                                         data.add_points(100);
-                                        agent_log(
-                                            "H2",
-                                            "maze_scene.rs:tank_died",
-                                            "about to PlaySound(tank_died_sfx)",
-                                            &format!(
-                                                "{{\"has\":{},\"frameCount\":{}}}",
-                                                data.tank_died_sfx.is_some(),
-                                                data.tank_died_sfx.map(|s| s.frameCount).unwrap_or(0)
-                                            ),
-                                        );
                                         unsafe { PlaySound(data.tank_died_sfx.unwrap()) };
                                        
                                     },
                                     "shooter" => {
                                         data.add_points(250);
-                                        agent_log(
-                                            "H2",
-                                            "maze_scene.rs:shooter_died",
-                                            "about to PlaySound(shooter_died_sfx)",
-                                            &format!(
-                                                "{{\"has\":{},\"frameCount\":{}}}",
-                                                data.shooter_died_sfx.is_some(),
-                                                data.shooter_died_sfx.map(|s| s.frameCount).unwrap_or(0)
-                                            ),
-                                        );
                                         unsafe { PlaySound(data.shooter_died_sfx.unwrap()) };
                                             },
                                     _ => {}
@@ -1124,16 +1094,6 @@ impl MazeScene {
                 if projectile_rect.check_collision_recs(&player_rect) {
                     // Deal damage to player
                     let player_died = self.player_hp.take_damage(projectile.damage);
-                    agent_log(
-                        "H2",
-                        "maze_scene.rs:player_damaged",
-                        "about to PlaySound(player_damaged_sfx)",
-                        &format!(
-                            "{{\"has\":{},\"frameCount\":{}}}",
-                            data.player_damaged_sfx.is_some(),
-                            data.player_damaged_sfx.map(|s| s.frameCount).unwrap_or(0)
-                        ),
-                    );
                     unsafe { PlaySound(data.player_damaged_sfx.unwrap()) };
                     // Mark projectile for removal
                     projectiles_to_remove.push(i);

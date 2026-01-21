@@ -10,7 +10,6 @@
 use raylib_framework_testing::game_data::GameData;
 use raylib_framework_testing::menu_scene::TitleScene;
 use raylib_framework_testing::scenes::SceneManager;
-use raylib_framework_testing::utils::agent_log;
 
 use std::{fs::OpenOptions, time::Instant};
 
@@ -49,10 +48,9 @@ fn main() {
 
 
     // create the game data. This prepresents data associated with the human player.
-    agent_log("H1", "main.rs:GameData::new", "creating GameData (InitAudioDevice inside GameData::new?)", "{}");
     let mut game_data = GameData::new(width, height);
     game_data.set_thread(thread);
-    agent_log("H2", "main.rs:load_sfx", "calling game_data.load_sfx()", "{}");
+
     game_data.load_sfx();
     
     // Audio device is initialized in GameData::new (do not double-init).

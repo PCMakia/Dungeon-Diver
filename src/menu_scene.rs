@@ -547,6 +547,7 @@ impl Scene for LoseScene {
                 data.level_completion_time = None;
                 
                 use crate::maze_scene::MazeScene;
+                data.start_level(data.current_stage);
                 return SceneSwitch::PopAndReplace(Box::new(MazeScene::from_map(self.stage.clone())));
             }
             

@@ -54,26 +54,3 @@ pub unsafe fn load_sound(path: &str) -> Option<ffi::Sound> {
     }
 }
 
-// #region agent log
-pub fn agent_log(hypothesis_id: &str, location: &str, message: &str, data: &str) {
-    let ts = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis())
-        .unwrap_or(0);
-    let line = format!(
-        "{{\"sessionId\":\"debug-session\",\"runId\":\"run1\",\"hypothesisId\":\"{}\",\"location\":\"{}\",\"message\":\"{}\",\"data\":{},\"timestamp\":{}}}\n",
-        hypothesis_id,
-        location.replace('\\', "\\\\").replace('"', "\\\""),
-        message.replace('\\', "\\\\").replace('"', "\\\""),
-        data,
-        ts
-    );
-    if let Ok(mut f) = OpenOptions::new()
-        .create(true)
-        .append(true)
-        .open("debug_ndjson.log")
-    {
-        let _ = f.write_all(line.as_bytes());
-    }
-}
-// #endregion agent log

@@ -5,7 +5,7 @@
 
 use raylib::ffi::InitAudioDevice;
 use raylib::ffi::Sound;
-use crate::utils::{load_sound, agent_log};
+use crate::utils::{load_sound};
 use raylib::prelude::*;
 use raylib::ffi;
 use std::time::Instant;
@@ -104,7 +104,6 @@ impl GameData {
         let save = load_save();
         unsafe {
         // Initialize Audio Device (FFI)
-        agent_log("H1", "game_data.rs:GameData::new", "calling InitAudioDevice()", "{}");
         InitAudioDevice();
         }
         
@@ -138,23 +137,10 @@ impl GameData {
 
     pub fn load_sfx(&mut self) {
         unsafe {
-            agent_log("H2", "game_data.rs:load_sfx", "loading SFX via ffi::LoadSound", "{}");
             self.tank_died_sfx = load_sound("assets/SFX/SE/Tank_died.mp3");
             self.shooter_died_sfx = load_sound("assets/SFX/SE/Shooter_died.mp3");
             self.player_hit_sfx = load_sound("assets/SFX/SE/Player_arrow.mp3");
             self.player_damaged_sfx = load_sound("assets/SFX/SE/Player_damaged.mp3");
-            agent_log(
-                "H2",
-                "game_data.rs:load_sfx",
-                "loaded SFX frameCounts",
-                &format!(
-                    "{{\"tank\":{},\"shooter\":{},\"player_hit\":{},\"player_damaged\":{}}}",
-                    self.tank_died_sfx.map(|s| s.frameCount).unwrap_or(0),
-                    self.shooter_died_sfx.map(|s| s.frameCount).unwrap_or(0),
-                    self.player_hit_sfx.map(|s| s.frameCount).unwrap_or(0),
-                    self.player_damaged_sfx.map(|s| s.frameCount).unwrap_or(0)
-                )
-            );
         }
     }
    

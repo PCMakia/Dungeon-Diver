@@ -43,7 +43,7 @@ fn main() {
     let height: i32 = 960;
     let (mut rl, thread) = raylib::init()
         .size(width, height)
-        .title("Dungeon Diver V0.2")
+        .title("Dungeon Diver V0.5")
         .build();
 
 

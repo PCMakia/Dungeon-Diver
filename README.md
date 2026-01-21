@@ -16,6 +16,15 @@ This is a simple game framework for Raylib using Rust. The design and logics was
 - Win the game by finding your way out of the maze while killing as much entities as possible for bigger points.
 
 ## Previews
+Gif from the game
+
+![GIF 1](Preview/Preview_1.gif)
+
+![GIF 2](Preview/Preview_2.gif)
+
+![GIF 3](Preview/Preview_3.gif)
+
+
 Screenshot from the game
 
 ![Win](Preview/1.png "Stage Cleared Screen")

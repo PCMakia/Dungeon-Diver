@@ -4,7 +4,8 @@
 
 use raylib::prelude::*;
 use raylib::ffi;
-use std::ffi::CString;
+use crate::maze_scene::ffi::PlaySound;
+use crate::utils::agent_log;
 
 use crate::menu_scene::WinScene;
 use crate::scenes::{Scene, SceneSwitch};
@@ -223,6 +224,8 @@ impl MazeScene {
             // Shooter: 4 frames idle:
             shooter_anim: AnimationState::with_sequence(vec![0, 1, 2, 3, 3, 2, 1, 0], 0.2),
          
+            
+
             // Initialize HP system
             player_hp: Health::new(10), 
             entity_states: Vec::new(),
@@ -980,6 +983,8 @@ impl MazeScene {
     /// Update projectiles and check for collisions
     /// `data` is used to award points when enemies are defeated.
     fn update_projectiles(&mut self, dt: f32, data: &mut GameData) {
+        
+
         // Update all projectiles
         self.projectile_system.update(dt);
         
@@ -1035,6 +1040,17 @@ impl MazeScene {
                         // Deal damage to enemy
                         let enemy_died = entity.hp.take_damage(projectile.damage);
                         
+                        agent_log(
+                            "H2",
+                            "maze_scene.rs:projectile_hit_enemy",
+                            "about to PlaySound(player_hit_sfx)",
+                            &format!(
+                                "{{\"has\":{},\"frameCount\":{}}}",
+                                data.player_hit_sfx.is_some(),
+                                data.player_hit_sfx.map(|s| s.frameCount).unwrap_or(0)
+                            ),
+                        );
+                        unsafe { PlaySound(data.player_hit_sfx.unwrap()) };
                         // Mark projectile for removal
                         projectiles_to_remove.push(i);
                         
@@ -1047,8 +1063,35 @@ impl MazeScene {
                                 
                                 // Award different points per enemy type
                                 match entity.kind.as_str() {
-                                    "tank" => data.add_points(100),
-                                    "shooter" => data.add_points(250),
+                                    "tank" => {
+                                        data.add_points(100);
+                                        agent_log(
+                                            "H2",
+                                            "maze_scene.rs:tank_died",
+                                            "about to PlaySound(tank_died_sfx)",
+                                            &format!(
+                                                "{{\"has\":{},\"frameCount\":{}}}",
+                                                data.tank_died_sfx.is_some(),
+                                                data.tank_died_sfx.map(|s| s.frameCount).unwrap_or(0)
+                                            ),
+                                        );
+                                        unsafe { PlaySound(data.tank_died_sfx.unwrap()) };
+                                       
+                                    },
+                                    "shooter" => {
+                                        data.add_points(250);
+                                        agent_log(
+                                            "H2",
+                                            "maze_scene.rs:shooter_died",
+                                            "about to PlaySound(shooter_died_sfx)",
+                                            &format!(
+                                                "{{\"has\":{},\"frameCount\":{}}}",
+                                                data.shooter_died_sfx.is_some(),
+                                                data.shooter_died_sfx.map(|s| s.frameCount).unwrap_or(0)
+                                            ),
+                                        );
+                                        unsafe { PlaySound(data.shooter_died_sfx.unwrap()) };
+                                            },
                                     _ => {}
                                 }
 
@@ -1081,7 +1124,17 @@ impl MazeScene {
                 if projectile_rect.check_collision_recs(&player_rect) {
                     // Deal damage to player
                     let player_died = self.player_hp.take_damage(projectile.damage);
-                    
+                    agent_log(
+                        "H2",
+                        "maze_scene.rs:player_damaged",
+                        "about to PlaySound(player_damaged_sfx)",
+                        &format!(
+                            "{{\"has\":{},\"frameCount\":{}}}",
+                            data.player_damaged_sfx.is_some(),
+                            data.player_damaged_sfx.map(|s| s.frameCount).unwrap_or(0)
+                        ),
+                    );
+                    unsafe { PlaySound(data.player_damaged_sfx.unwrap()) };
                     // Mark projectile for removal
                     projectiles_to_remove.push(i);
                     
@@ -1138,6 +1191,8 @@ impl Scene for MazeScene {
         self.map = load_map(&self.stage.map_path);
         self.tile_size = self.map.tile_size_px;
 
+        // SFX are loaded once in `main` via `game_data.load_sfx()` (do not init audio again here).
+
         // Load texture using the thread from GameData
         if let Some(ref thread) = data.thread {
             let texture_path = resolve_asset_path("assets/textures/tileset0.png");
@@ -1191,22 +1246,7 @@ impl Scene for MazeScene {
             self.projectile_system.set_mage_bullet_texture(mage_bullet_texture);
             
             // Load and play TestStage music using FFI
-
             data.play_stage_music(&self.stage.music_path);
-            // let music_path = resolve_asset_path("assets/SFX/BGM/TestStage/synesthesia.mp3");
-            // if Path::new(&music_path).exists() {
-            //     unsafe {
-            //         if let Ok(c_path) = CString::new(music_path.as_str()) {
-            //             let mut music = ffi::LoadMusicStream(c_path.as_ptr());
-            //             music.looping = true;
-            //             ffi::SetMusicVolume(music, 0.0); // Start at 0 for fade-in
-            //             ffi::PlayMusicStream(music);
-            //             data.current_music = Some(music);
-            //             data.music_volume = 0.0;
-            //             data.music_fade_timer = 0.0;
-            //         }
-            //     }
-            // }
         }
 
         // Initialize player position from map entities
@@ -1355,6 +1395,11 @@ impl Scene for MazeScene {
                     // D-pad up
                     new_y = new_y.saturating_sub(1);
                     movement_queued = true;
+                }
+                if rl.is_gamepad_button_pressed(0, GamepadButton::GAMEPAD_BUTTON_MIDDLE_LEFT) {
+                    // Pause
+                    use crate::menu_scene::PauseScene;
+                    return SceneSwitch::Push(Box::new(PauseScene));
                 }
                 
                 // ===== ANALOG STICK INPUT =====

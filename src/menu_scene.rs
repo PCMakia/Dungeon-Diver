@@ -435,7 +435,12 @@ impl Scene for PauseScene {
         if _rl.is_key_pressed(KeyboardKey::KEY_ESCAPE) || _rl.is_key_pressed(KeyboardKey::KEY_P) {
             return SceneSwitch::Pop;
         }
-        
+        // controller support
+        if _rl.is_gamepad_available(0) {
+            if _rl.is_gamepad_button_pressed(0, GamepadButton::GAMEPAD_BUTTON_MIDDLE_LEFT) {
+                return SceneSwitch::Pop;
+            }
+        }
         // Button clicks
         if _rl.is_mouse_button_pressed(MouseButton::MOUSE_BUTTON_LEFT) {
             let click = _rl.get_mouse_position();

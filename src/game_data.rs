@@ -3,6 +3,9 @@
 //! You could also store data associated with each human player here.
 //! We could also store the player's gamepad_id here.
 
+use raylib::ffi::InitAudioDevice;
+use raylib::ffi::Sound;
+use crate::utils::{load_sound, agent_log};
 use raylib::prelude::*;
 use raylib::ffi;
 use std::time::Instant;
@@ -58,6 +61,12 @@ pub struct StageConfig {
     pub music_path: String,
 }
 
+#[derive(Debug)]
+enum AudioError {
+    FileNotFound,
+    InvalidFormat,
+}
+
 
 pub struct GameData {
     pub points: u32,
@@ -81,13 +90,24 @@ pub struct GameData {
     pub win_music_full_played: bool,
     pub win_music_loop: Option<ffi::Music>,
 
+    // initialize sfx
+    pub tank_died_sfx: Option<Sound>,
+    pub shooter_died_sfx: Option<Sound>,
+    pub player_hit_sfx: Option<Sound>,
+    pub player_damaged_sfx: Option<Sound>,
+
     
 }
 
 impl GameData {
     pub fn new(width: i32, height: i32) -> Self {
         let save = load_save();
-
+        unsafe {
+        // Initialize Audio Device (FFI)
+        agent_log("H1", "game_data.rs:GameData::new", "calling InitAudioDevice()", "{}");
+        InitAudioDevice();
+        }
+        
         Self {
             points: 0,
             current_stage: 0,
@@ -107,9 +127,55 @@ impl GameData {
 
             win_music_full_played: false,
             win_music_loop: None,
+
+            tank_died_sfx: None,
+            shooter_died_sfx: None,
+            player_hit_sfx: None,
+            player_damaged_sfx: None,
         }
     }
-    
+   
+
+    pub fn load_sfx(&mut self) {
+        unsafe {
+            agent_log("H2", "game_data.rs:load_sfx", "loading SFX via ffi::LoadSound", "{}");
+            self.tank_died_sfx = load_sound("assets/SFX/SE/Tank_died.mp3");
+            self.shooter_died_sfx = load_sound("assets/SFX/SE/Shooter_died.mp3");
+            self.player_hit_sfx = load_sound("assets/SFX/SE/Player_arrow.mp3");
+            self.player_damaged_sfx = load_sound("assets/SFX/SE/Player_damaged.mp3");
+            agent_log(
+                "H2",
+                "game_data.rs:load_sfx",
+                "loaded SFX frameCounts",
+                &format!(
+                    "{{\"tank\":{},\"shooter\":{},\"player_hit\":{},\"player_damaged\":{}}}",
+                    self.tank_died_sfx.map(|s| s.frameCount).unwrap_or(0),
+                    self.shooter_died_sfx.map(|s| s.frameCount).unwrap_or(0),
+                    self.player_hit_sfx.map(|s| s.frameCount).unwrap_or(0),
+                    self.player_damaged_sfx.map(|s| s.frameCount).unwrap_or(0)
+                )
+            );
+        }
+    }
+   
+    pub fn unload_sfx(&mut self) {
+        unsafe {
+            if let Some(s) = self.tank_died_sfx.take() {
+                ffi::UnloadSound(s);
+            }
+            if let Some(s) = self.shooter_died_sfx.take() {
+                ffi::UnloadSound(s);
+            }
+            if let Some(s) = self.player_hit_sfx.take() {
+                ffi::UnloadSound(s);
+            }
+            if let Some(s) = self.player_damaged_sfx.take() {
+                ffi::UnloadSound(s);
+            }
+        }
+    }
+
+
     pub fn set_thread(&mut self, thread: RaylibThread) {
         self.thread = Some(thread);
     }
@@ -171,6 +237,8 @@ impl GameData {
         self.music_volume = 0.0;
         self.music_fade_timer = 0.0;
         self.win_music_full_played = false;
+            
+    
     }
     
     /// Update music volume fade-in

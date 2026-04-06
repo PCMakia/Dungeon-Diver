@@ -140,6 +140,8 @@ pub struct MazeScene {
     
     // Camera system
     camera: Camera2D,
+    view_center_x: f32, // tile-space (continuous), used for smooth camera/FOV culling
+    view_center_y: f32, // tile-space (continuous), used for smooth camera/FOV culling
     fov_radius: i32, // tiles
     
     // Tick-based game logic
@@ -209,6 +211,8 @@ impl MazeScene {
                 rotation: 0.0,
                 zoom: 1.0,
             },
+            view_center_x: 0.5,
+            view_center_y: 0.5,
             fov_radius: 7, 
             tick_timer: 0.0,
             tick_rate: 0.15, // increase for slower tick game
@@ -261,32 +265,48 @@ impl MazeScene {
             return false;
         }
         
-        // Calculate squared distance
-        let dx = x as i32 - self.player_x as i32;
-        let dy = y as i32 - self.player_y as i32;
+        // Calculate squared distance from smooth view center (in tile-space).
+        let tile_cx = x as f32 + 0.5;
+        let tile_cy = y as f32 + 0.5;
+        let dx = tile_cx - self.view_center_x;
+        let dy = tile_cy - self.view_center_y;
         let dist_squared = dx * dx + dy * dy;
-        let radius_squared = self.fov_radius * self.fov_radius;
+        let radius_squared = (self.fov_radius as f32) * (self.fov_radius as f32);
         
         dist_squared <= radius_squared
     }
-    
+
     /// Calculate visible tile bounds for optimized drawing
     /// Returns (min_x, max_x, min_y, max_y) clamped to map bounds
     fn get_visible_bounds(&self) -> (usize, usize, usize, usize) {
-        let min_x = self.player_x.saturating_sub(self.fov_radius as usize);
-        let max_x = (self.player_x + self.fov_radius as usize + 1).min(self.map.grid_w);
-        let min_y = self.player_y.saturating_sub(self.fov_radius as usize);
-        let max_y = (self.player_y + self.fov_radius as usize + 1).min(self.map.grid_h);
+        let pad = 1.0_f32;
+        let r = self.fov_radius as f32;
+        let min_xf = self.view_center_x - r - pad;
+        let max_xf = self.view_center_x + r + pad;
+        let min_yf = self.view_center_y - r - pad;
+        let max_yf = self.view_center_y + r + pad;
+
+        let min_x = min_xf.floor().max(0.0) as usize;
+        let max_x = max_xf.ceil().min(self.map.grid_w as f32) as usize;
+        let min_y = min_yf.floor().max(0.0) as usize;
+        let max_y = max_yf.ceil().min(self.map.grid_h as f32) as usize;
         
         (min_x, max_x, min_y, max_y)
     }
     
     /// Update camera to follow player (centered on screen)
-    fn update_camera(&mut self, data: &GameData) {
-        // Convert player tile position to world pixel position (center of tile)
+    fn update_camera(&mut self, data: &GameData, dt: f32) {
+        // Interpolate camera/FOV center toward the tile center for smoother visual motion.
+        let target_x = self.player_x as f32 + 0.5;
+        let target_y = self.player_y as f32 + 0.5;
+        let t = (dt * 12.0).min(1.0);
+        self.view_center_x += (target_x - self.view_center_x) * t;
+        self.view_center_y += (target_y - self.view_center_y) * t;
+
+        // Convert smooth tile-space center to world pixel-space center.
         self.camera.target = Vector2::new(
-            (self.player_x as i32 * self.tile_size + self.tile_size / 2) as f32,
-            (self.player_y as i32 * self.tile_size + self.tile_size / 2) as f32,
+            self.view_center_x * self.tile_size as f32,
+            self.view_center_y * self.tile_size as f32,
         );
         
         // Offset camera so player appears centered on screen
@@ -1143,7 +1163,6 @@ impl MazeScene {
             dst, Vector2::zero(), 0.0, Color::WHITE);
     }
 
-
 }
 
 impl Scene for MazeScene {
@@ -1287,7 +1306,9 @@ impl Scene for MazeScene {
         }
         
         // Initialize camera position
-        self.update_camera(data);
+        self.view_center_x = self.player_x as f32 + 0.5;
+        self.view_center_y = self.player_y as f32 + 0.5;
+        self.update_camera(data, 1.0);
         
     }
 
@@ -1430,7 +1451,7 @@ impl Scene for MazeScene {
 
     fn update(&mut self, dt: f32, data: &mut GameData) -> SceneSwitch {
         // Update camera every frame
-        self.update_camera(data);
+        self.update_camera(data, dt);
         
         // Update animations every frame
         self.player_anim.update(dt);
@@ -1462,19 +1483,22 @@ impl Scene for MazeScene {
             }
         });
         
-        // Tick-based game logic
+        // Tick-based game logic with an accumulator.
+        // Subtracting tick_rate preserves fractional remainder, which reduces movement jitter
+        // when frame times fluctuate in browsers.
         self.tick_timer += dt;
-        
-        // Process game tick when timer exceeds tick_rate
-        if self.tick_timer >= self.tick_rate {
-            self.tick_timer = 0.0;
-            
+        let mut processed_ticks = 0;
+        const MAX_TICKS_PER_FRAME: i32 = 4;
+        while self.tick_timer >= self.tick_rate && processed_ticks < MAX_TICKS_PER_FRAME {
+            self.tick_timer -= self.tick_rate;
+            processed_ticks += 1;
+
             // Update player movement (grid-locked, tick-based)
             self.update_player();
-            
+
             // Update enemy AI
             self.update_enemies();
-            
+
             // Remove dead entities (goals are kept separately in map.entities)
             self.entity_states.retain(|e| e.hp.is_alive());
         }
@@ -1709,7 +1733,7 @@ impl Scene for MazeScene {
         
         self.projectile_system
             .draw(&mut d2d, self.tile_size, min_x, max_x, min_y, max_y);
-        
+
         // End 2D camera mode
         drop(d2d);
         

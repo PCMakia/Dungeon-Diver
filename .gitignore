@@ -4,3 +4,10 @@ MapMaker*
 *.pdf
 *.docx
 debug*
+
+web/node_modules
+web/dist
+web/public/dungeon-diver/*
+!web/public/dungeon-diver/.gitkeep
+
+web

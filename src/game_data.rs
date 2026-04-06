@@ -296,11 +296,19 @@ use std::io::{Read, Write};
 use std::path::PathBuf;
 
 fn save_path() -> PathBuf {
-    let mut path = dirs::data_local_dir().unwrap();
-    path.push("dungeon_diver");
-    create_dir_all(&path).ok();
-    path.push("save_score.json");
-    path
+    #[cfg(target_os = "emscripten")]
+    {
+        // In-browser MEMFS path (session-only unless you add IDBFS in the Emscripten shell).
+        PathBuf::from("/dungeon_diver_save.json")
+    }
+    #[cfg(not(target_os = "emscripten"))]
+    {
+        let mut path = dirs::data_local_dir().unwrap();
+        path.push("dungeon_diver");
+        create_dir_all(&path).ok();
+        path.push("save_score.json");
+        path
+    }
 }
 
 pub fn load_save() -> SaveData {

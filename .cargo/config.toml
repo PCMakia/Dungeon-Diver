@@ -1,0 +1,4 @@
+# Web: Rust + raylib link through Emscripten (emcc). See web/README.md and:
+# https://doc.rust-lang.org/rustc/platform-support/wasm32-unknown-emscripten.html
+[target.wasm32-unknown-emscripten]
+linker = "emcc"
